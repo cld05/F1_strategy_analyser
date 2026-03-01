@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from f1analyser.session_loader import (
+from session_loader import (
     SessionLoadError,
     available_seasons,
     extract_session_metadata,
