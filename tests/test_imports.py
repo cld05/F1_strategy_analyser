@@ -1,2 +1,4 @@
 def test_import_package() -> None:
-    import app  # noqa: F401
+    import f1analyser
+
+    assert f1analyser.__version__ == "0.1.0"
