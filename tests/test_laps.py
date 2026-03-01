@@ -9,7 +9,7 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from src.f1analyser.laps import (
+from f1analyser.laps import (
     REQUIRED_LAPS_COLUMNS,
     build_canonical_laps,
     classify_clean_laps,

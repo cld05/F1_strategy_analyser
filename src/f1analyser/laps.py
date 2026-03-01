@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+import numpy as np
 import pandas as pd
 
 REQUIRED_LAPS_COLUMNS: list[str] = [
@@ -49,6 +50,9 @@ def _event_value(event: Any, key_a: str, key_b: str, fallback: Any) -> Any:
 
 
 def _to_seconds(series: pd.Series[Any]) -> pd.Series[Any]:
+    if pd.api.types.is_datetime64_any_dtype(series):
+        # Datetime pit markers are not durations; keep as missing seconds in canonical laps.
+        return pd.Series(np.nan, index=series.index, dtype="float64")
     timedelta_series = pd.to_timedelta(series, errors="coerce")
     return timedelta_series.dt.total_seconds()
 

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from laps import (
+from f1analyser.laps import (
     CanonicalLapsError,
     classify_clean_laps,
     drop_drivers_with_telemetry_gaps,
     load_or_build_canonical_laps,
 )
-from session_loader import (
+from f1analyser.session_loader import (
     SessionLoadError,
     available_seasons,
     extract_session_metadata,

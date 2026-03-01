@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.f1analyser import session_loader
-from src.f1analyser.session_loader import SessionLoadError
+from f1analyser import session_loader
+from f1analyser.session_loader import SessionLoadError
 
 
 @dataclass
