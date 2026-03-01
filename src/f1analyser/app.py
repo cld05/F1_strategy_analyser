@@ -8,6 +8,8 @@ from f1analyser.laps import (
     drop_drivers_with_telemetry_gaps,
     load_or_build_canonical_laps,
 )
+from f1analyser.pits_stints import build_stints, detect_pits
+from f1analyser.comparison import load_or_build_comparison_tables
 from f1analyser.session_loader import (
     SessionLoadError,
     available_seasons,
@@ -113,6 +115,17 @@ def _render_driver_tab() -> None:
             )
             classified = classify_clean_laps(laps_df)
             filtered_laps, dropped_drivers = drop_drivers_with_telemetry_gaps(classified)
+            pits = detect_pits(filtered_laps)
+            stints = build_stints(filtered_laps, pits)
+            comparison_windows, comparison_summary, comparison_from_cache, windows_path, summary_path = (
+                load_or_build_comparison_tables(
+                    filtered_laps,
+                    pits,
+                    stints,
+                    selected_drivers=selected_drivers,
+                    cache_dir="cache",
+                )
+            )
         except CanonicalLapsError as exc:
             st.error(str(exc))
             st.session_state.pop("canonical_laps", None)
@@ -121,6 +134,14 @@ def _render_driver_tab() -> None:
             st.session_state["laps_cache_path"] = str(cache_path)
             st.session_state["laps_from_cache"] = loaded_from_cache
             st.session_state["dropped_drivers"] = dropped_drivers
+            st.session_state["selected_drivers"] = selected_drivers
+            st.session_state["pits_table"] = pits
+            st.session_state["stints_table"] = stints
+            st.session_state["comparison_windows"] = comparison_windows
+            st.session_state["comparison_summary"] = comparison_summary
+            st.session_state["comparison_from_cache"] = comparison_from_cache
+            st.session_state["comparison_windows_cache_path"] = str(windows_path)
+            st.session_state["comparison_summary_cache_path"] = str(summary_path)
             source_label = "cache" if loaded_from_cache else "session data"
             st.success(f"Canonical laps loaded from {source_label}.")
 
@@ -136,6 +157,52 @@ def _render_driver_tab() -> None:
     if dropped_drivers:
         st.warning(f"Dropped drivers due to telemetry gaps >10%: {', '.join(dropped_drivers)}")
     st.dataframe(canonical_laps, use_container_width=True)
+
+
+def _render_stints_pits_tab() -> None:
+    st.subheader("Stints & pits tables")
+    pits = st.session_state.get("pits_table")
+    stints = st.session_state.get("stints_table")
+    if pits is None or stints is None:
+        st.info("Build canonical laps first to compute pits and stints.")
+        return
+
+    st.write("Pits")
+    st.dataframe(pits, use_container_width=True)
+    st.write("Stints")
+    st.dataframe(stints, use_container_width=True)
+
+
+def _render_comparison_tab() -> None:
+    st.subheader("Comparison summary")
+    windows = st.session_state.get("comparison_windows")
+    summary = st.session_state.get("comparison_summary")
+    if windows is None or summary is None:
+        st.info("Build canonical laps first to compute comparison tables.")
+        return
+
+    windows_cache_path = st.session_state.get("comparison_windows_cache_path", "")
+    summary_cache_path = st.session_state.get("comparison_summary_cache_path", "")
+    from_cache = st.session_state.get("comparison_from_cache", False)
+    st.caption(
+        "Comparison cache: "
+        f"hit={from_cache} | windows={windows_cache_path} | summary={summary_cache_path}"
+    )
+
+    warnings_value = str(summary.iloc[0].get("warnings", "")).strip()
+    if warnings_value:
+        st.warning(warnings_value)
+
+    excluded = windows[windows["included"] == False]  # noqa: E712
+    if not excluded.empty:
+        reasons = ", ".join(sorted({str(value) for value in excluded["exclude_reason"].dropna().tolist()}))
+        if reasons:
+            st.warning(f"Excluded windows: {reasons}")
+
+    st.write("Comparison summary table")
+    st.dataframe(summary, use_container_width=True)
+    st.write("Comparison windows table")
+    st.dataframe(windows, use_container_width=True)
 
 
 def main() -> None:
@@ -161,12 +228,10 @@ def main() -> None:
         _render_driver_tab()
 
     with tabs[2]:
-        st.subheader("Stints & pits tables")
-        st.info("MVP scaffold.")
+        _render_stints_pits_tab()
 
     with tabs[3]:
-        st.subheader("Comparison summary")
-        st.info("MVP scaffold.")
+        _render_comparison_tab()
 
     with tabs[4]:
         st.subheader("Plots")

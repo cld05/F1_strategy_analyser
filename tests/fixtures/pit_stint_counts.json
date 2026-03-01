@@ -1,13 +1,16 @@
 {
   "spain_rd10": {
+    "residual_bound_pair": 5.0,
     "VER": {"pit_count": 2, "stint_count": 3},
     "NOR": {"pit_count": 2, "stint_count": 3}
   },
   "austria_rd11": {
+    "residual_bound_pair": 8.0,
     "VER": {"pit_count": 3, "stint_count": 4},
     "NOR": {"pit_count": 2, "stint_count": 3}
   },
   "britain_rd12": {
+    "residual_bound_pair": 12.0,
     "VER": {"pit_count": 2, "stint_count": 3},
     "NOR": {"pit_count": 3, "stint_count": 4}
   }

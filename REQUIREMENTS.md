@@ -310,7 +310,7 @@ Fixture,Driver,Expected Pit Count,Expected Stint Count,Residual Bound
 For each fixture (driver pair VER vs NOR):
 - pit count matches expected exactly for each driver
 - stint count matches expected exactly for each driver
-- `abs(residual_s) < bound` (bound per fixture table)
+- `abs(residual_s) < bound` where fixture bound for a driver pair is the **maximum** residual bound listed for the two drivers in that fixture row set.
 - core invariants:
   - stints cover all completed laps with 0 overlap per driver
   - `n_clean + n_excluded = n_total` per stint
