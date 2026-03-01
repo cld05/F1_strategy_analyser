@@ -1,0 +1,14 @@
+{
+  "spain_rd10": {
+    "VER": {"pit_count": 2, "stint_count": 3},
+    "NOR": {"pit_count": 2, "stint_count": 3}
+  },
+  "austria_rd11": {
+    "VER": {"pit_count": 3, "stint_count": 4},
+    "NOR": {"pit_count": 2, "stint_count": 3}
+  },
+  "britain_rd12": {
+    "VER": {"pit_count": 2, "stint_count": 3},
+    "NOR": {"pit_count": 3, "stint_count": 4}
+  }
+}
