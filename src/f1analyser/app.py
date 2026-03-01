@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from laps import CanonicalLapsError, load_or_build_canonical_laps
+from laps import (
+    CanonicalLapsError,
+    classify_clean_laps,
+    drop_drivers_with_telemetry_gaps,
+    load_or_build_canonical_laps,
+)
 from session_loader import (
     SessionLoadError,
     available_seasons,
@@ -106,13 +111,16 @@ def _render_driver_tab() -> None:
                 selected_drivers,
                 cache_dir="cache",
             )
+            classified = classify_clean_laps(laps_df)
+            filtered_laps, dropped_drivers = drop_drivers_with_telemetry_gaps(classified)
         except CanonicalLapsError as exc:
             st.error(str(exc))
             st.session_state.pop("canonical_laps", None)
         else:
-            st.session_state["canonical_laps"] = laps_df
+            st.session_state["canonical_laps"] = filtered_laps
             st.session_state["laps_cache_path"] = str(cache_path)
             st.session_state["laps_from_cache"] = loaded_from_cache
+            st.session_state["dropped_drivers"] = dropped_drivers
             source_label = "cache" if loaded_from_cache else "session data"
             st.success(f"Canonical laps loaded from {source_label}.")
 
@@ -123,7 +131,10 @@ def _render_driver_tab() -> None:
 
     cache_path = st.session_state.get("laps_cache_path", "")
     from_cache = st.session_state.get("laps_from_cache", False)
+    dropped_drivers = st.session_state.get("dropped_drivers", [])
     st.caption(f"Cache file: {cache_path} | cache hit: {from_cache}")
+    if dropped_drivers:
+        st.warning(f"Dropped drivers due to telemetry gaps >10%: {', '.join(dropped_drivers)}")
     st.dataframe(canonical_laps, use_container_width=True)
 
 
