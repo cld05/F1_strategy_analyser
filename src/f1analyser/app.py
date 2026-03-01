@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from session_loader import (
+from f1analyser.laps import CanonicalLapsError, load_or_build_canonical_laps
+from f1analyser.session_loader import (
     SessionLoadError,
     available_seasons,
     extract_session_metadata,
@@ -72,6 +73,60 @@ def _render_session_tab() -> None:
     )
 
 
+def _render_driver_tab() -> None:
+    st.subheader("Driver selection")
+
+    loaded_session = st.session_state.get("loaded_session")
+    if loaded_session is None:
+        st.info("Load a Race session first.")
+        return
+
+    raw_drivers = sorted(
+        {
+            str(driver)
+            for driver in loaded_session.laps["Driver"].dropna().unique().tolist()
+            if str(driver).strip()
+        }
+    )
+    if len(raw_drivers) < 2:
+        st.warning("This session has fewer than 2 drivers with laps data.")
+        return
+
+    selected_drivers = st.multiselect(
+        "Select exactly 2 drivers",
+        options=raw_drivers,
+        default=raw_drivers[:2],
+        max_selections=2,
+    )
+
+    if st.button("Build canonical laps table", type="primary"):
+        try:
+            laps_df, loaded_from_cache, cache_path = load_or_build_canonical_laps(
+                loaded_session,
+                selected_drivers,
+                cache_dir="cache",
+            )
+        except CanonicalLapsError as exc:
+            st.error(str(exc))
+            st.session_state.pop("canonical_laps", None)
+        else:
+            st.session_state["canonical_laps"] = laps_df
+            st.session_state["laps_cache_path"] = str(cache_path)
+            st.session_state["laps_from_cache"] = loaded_from_cache
+            source_label = "cache" if loaded_from_cache else "session data"
+            st.success(f"Canonical laps loaded from {source_label}.")
+
+    canonical_laps = st.session_state.get("canonical_laps")
+    if canonical_laps is None:
+        st.info("Select two drivers and build the canonical laps table.")
+        return
+
+    cache_path = st.session_state.get("laps_cache_path", "")
+    from_cache = st.session_state.get("laps_from_cache", False)
+    st.caption(f"Cache file: {cache_path} | cache hit: {from_cache}")
+    st.dataframe(canonical_laps, use_container_width=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="F1 Post-Race Analyzer", layout="wide")
     st.title("F1 Post-Race Analyzer — MVP")
@@ -92,8 +147,7 @@ def main() -> None:
         _render_session_tab()
 
     with tabs[1]:
-        st.subheader("Driver selection")
-        st.info("MVP scaffold.")
+        _render_driver_tab()
 
     with tabs[2]:
         st.subheader("Stints & pits tables")
