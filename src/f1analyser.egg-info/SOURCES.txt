@@ -2,8 +2,13 @@ README.md
 pyproject.toml
 src/f1analyser/__init__.py
 src/f1analyser/app.py
+src/f1analyser/laps.py
+src/f1analyser/session_loader.py
 src/f1analyser.egg-info/PKG-INFO
 src/f1analyser.egg-info/SOURCES.txt
 src/f1analyser.egg-info/dependency_links.txt
 src/f1analyser.egg-info/requires.txt
 src/f1analyser.egg-info/top_level.txt
+tests/test_imports.py
+tests/test_laps.py
+tests/test_session_loader.py
