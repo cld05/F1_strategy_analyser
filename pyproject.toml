@@ -40,3 +40,4 @@ python_version = "3.11"
 strict = true
 mypy_path = "src"
 packages = ["f1analyser"]
+disable_error_code = ["import-untyped"]
