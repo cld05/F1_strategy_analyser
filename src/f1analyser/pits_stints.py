@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-try:
+if TYPE_CHECKING:
     from f1analyser.laps import CanonicalLapsError
-except ModuleNotFoundError:
-    from laps import CanonicalLapsError
+else:
+    try:
+        from f1analyser.laps import CanonicalLapsError
+    except ModuleNotFoundError:
+        from laps import CanonicalLapsError  # type: ignore[import-not-found]
 
 LOGGER = logging.getLogger(__name__)
 

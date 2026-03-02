@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 import pandas as pd
 
-try:
+if TYPE_CHECKING:
     from f1analyser.laps import CanonicalLapsError
     from f1analyser.metrics import compute_pit_loss_per_stop
-except ModuleNotFoundError:
-    from laps import CanonicalLapsError
-    from metrics import compute_pit_loss_per_stop
+else:
+    try:
+        from f1analyser.laps import CanonicalLapsError
+        from f1analyser.metrics import compute_pit_loss_per_stop
+    except ModuleNotFoundError:
+        from laps import CanonicalLapsError  # type: ignore[import-not-found]
+        from metrics import compute_pit_loss_per_stop  # type: ignore[import-not-found]
 
 COMPARISON_WINDOWS_COLUMNS: list[str] = [
     "window_id",

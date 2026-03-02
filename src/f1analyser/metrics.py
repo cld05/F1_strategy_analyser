@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
-try:
+if TYPE_CHECKING:
     from f1analyser.laps import CanonicalLapsError
-except ModuleNotFoundError:
-    from laps import CanonicalLapsError
+else:
+    try:
+        from f1analyser.laps import CanonicalLapsError
+    except ModuleNotFoundError:
+        from laps import CanonicalLapsError  # type: ignore[import-not-found]
 
 LOGGER = logging.getLogger(__name__)
 _SC_VSC_CODES = {"4", "6", "7"}
