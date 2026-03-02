@@ -6,7 +6,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from f1analyser.laps import CanonicalLapsError
+try:
+    from f1analyser.laps import CanonicalLapsError
+except ModuleNotFoundError:
+    from laps import CanonicalLapsError
 
 LOGGER = logging.getLogger(__name__)
 _SC_VSC_CODES = {"4", "6", "7"}

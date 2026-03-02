@@ -5,7 +5,10 @@ from typing import Any
 
 import pandas as pd
 
-from f1analyser.laps import CanonicalLapsError
+try:
+    from f1analyser.laps import CanonicalLapsError
+except ModuleNotFoundError:
+    from laps import CanonicalLapsError
 
 LOGGER = logging.getLogger(__name__)
 

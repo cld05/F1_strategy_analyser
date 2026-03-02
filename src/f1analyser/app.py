@@ -2,20 +2,36 @@ from __future__ import annotations
 
 import streamlit as st
 
-from f1analyser.laps import (
-    CanonicalLapsError,
-    classify_clean_laps,
-    drop_drivers_with_telemetry_gaps,
-    load_or_build_canonical_laps,
-)
-from f1analyser.pits_stints import build_stints, detect_pits
-from f1analyser.comparison import load_or_build_comparison_tables
-from f1analyser.session_loader import (
-    SessionLoadError,
-    available_seasons,
-    extract_session_metadata,
-    load_race_session,
-)
+try:
+    from f1analyser.laps import (
+        CanonicalLapsError,
+        classify_clean_laps,
+        drop_drivers_with_telemetry_gaps,
+        load_or_build_canonical_laps,
+    )
+    from f1analyser.pits_stints import build_stints, detect_pits
+    from f1analyser.comparison import load_or_build_comparison_tables
+    from f1analyser.session_loader import (
+        SessionLoadError,
+        available_seasons,
+        extract_session_metadata,
+        load_race_session,
+    )
+except ModuleNotFoundError:
+    from laps import (
+        CanonicalLapsError,
+        classify_clean_laps,
+        drop_drivers_with_telemetry_gaps,
+        load_or_build_canonical_laps,
+    )
+    from pits_stints import build_stints, detect_pits
+    from comparison import load_or_build_comparison_tables
+    from session_loader import (
+        SessionLoadError,
+        available_seasons,
+        extract_session_metadata,
+        load_race_session,
+    )
 
 
 def _render_session_tab() -> None:

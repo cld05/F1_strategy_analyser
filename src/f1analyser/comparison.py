@@ -5,8 +5,12 @@ from typing import Any, Sequence
 
 import pandas as pd
 
-from f1analyser.laps import CanonicalLapsError
-from f1analyser.metrics import compute_pit_loss_per_stop
+try:
+    from f1analyser.laps import CanonicalLapsError
+    from f1analyser.metrics import compute_pit_loss_per_stop
+except ModuleNotFoundError:
+    from laps import CanonicalLapsError
+    from metrics import compute_pit_loss_per_stop
 
 COMPARISON_WINDOWS_COLUMNS: list[str] = [
     "window_id",
