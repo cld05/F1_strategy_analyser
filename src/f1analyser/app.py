@@ -10,6 +10,7 @@ from f1analyser.plots import (
     build_cumulative_delta_figure,
     build_lap_time_trend_figure,
     build_per_lap_delta_figure,
+    build_track_compare_figure,
 )
 from f1analyser.session_loader import (
     SessionLoadError,
@@ -17,6 +18,7 @@ from f1analyser.session_loader import (
     extract_session_metadata,
     load_race_session,
 )
+from f1analyser.telemetry import TrackCompareError, build_track_compare_rows
 
 
 def _render_session_tab() -> None:
@@ -168,6 +170,30 @@ def _render_driver_tab() -> None:
         st.dataframe(filtered_laps, use_container_width=True)
 
 
+def _available_driver_lap_numbers(canonical_laps: object, driver: str) -> list[int]:
+    if not hasattr(canonical_laps, "__getitem__"):
+        return []
+    laps_df = canonical_laps
+    driver_laps = laps_df[laps_df["driver"] == driver]
+    lap_numbers = driver_laps["lap_number"].dropna().astype("int64").tolist()
+    return sorted(dict.fromkeys(int(lap) for lap in lap_numbers))
+
+
+def _select_session_lap(session: object, driver: str, lap_number: int) -> object:
+    session_laps = getattr(session, "laps", None)
+    if session_laps is None:
+        raise TrackCompareError("Loaded session has no laps data.")
+    if hasattr(session_laps, "pick_drivers"):
+        driver_laps = session_laps.pick_drivers([driver])
+    else:
+        driver_laps = session_laps[session_laps["Driver"] == driver]
+
+    matching_laps = driver_laps[driver_laps["LapNumber"] == lap_number]
+    if matching_laps.empty:
+        raise TrackCompareError(f"Lap {lap_number} for {driver} is not available.")
+    return matching_laps.iloc[0]
+
+
 def main() -> None:
     st.set_page_config(page_title="F1 Post-Race Analyzer", layout="wide")
     st.title("F1 Post-Race Analyzer — MVP")
@@ -176,9 +202,9 @@ def main() -> None:
         [
             "1) Session",
             "2) Drivers",
-            "3) Stints & Pits",
-            "4) Comparison Summary",
-            "5) Plots",
+            "3) Race delta",
+            "4) Lap trends",
+            "5) Track comparison",
             "6) Methods",
             "7) Debug",
         ]
@@ -211,7 +237,7 @@ def main() -> None:
                 st.plotly_chart(cumulative_figure, use_container_width=True)
                 st.plotly_chart(per_lap_figure, use_container_width=True)
 
-    with tabs[4]:
+    with tabs[3]:
         st.subheader("Lap time trends")
         filtered_laps = st.session_state.get("laps_filtered")
         selected_drivers = st.session_state.get("selected_drivers")
@@ -241,6 +267,34 @@ def main() -> None:
                     polynomial_degree=polynomial_degree,
                 )
                 st.plotly_chart(figure, use_container_width=True)
+
+    with tabs[4]:
+        st.subheader("Track comparison")
+        loaded_session = st.session_state.get("loaded_session")
+        canonical_laps = st.session_state.get("canonical_laps")
+        selected_drivers = st.session_state.get("selected_drivers")
+        if loaded_session is None or canonical_laps is None or selected_drivers is None:
+            st.info("Build canonical laps to prepare track comparison.")
+        else:
+            driver_a, driver_b = selected_drivers
+            lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
+            lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
+            if not lap_options_a or not lap_options_b:
+                st.info("No lap numbers are available for one or both selected drivers.")
+            else:
+                selected_lap_a = st.selectbox("Lap for driver A", options=lap_options_a, key="track_lap_a")
+                selected_lap_b = st.selectbox("Lap for driver B", options=lap_options_b, key="track_lap_b")
+                try:
+                    lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
+                    lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
+                    track_compare_rows, track_diagnostics = build_track_compare_rows(lap_a, lap_b)
+                except TrackCompareError as exc:
+                    st.error(str(exc))
+                else:
+                    for warning in track_diagnostics.warnings:
+                        st.warning(warning)
+                    figure = build_track_compare_figure(track_compare_rows)
+                    st.plotly_chart(figure, use_container_width=True)
 
     with tabs[5]:
         st.subheader("Methods")

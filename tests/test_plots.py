@@ -6,6 +6,7 @@ from f1analyser.plots import (
     build_cumulative_delta_figure,
     build_lap_time_trend_figure,
     build_per_lap_delta_figure,
+    build_track_compare_figure,
 )
 
 
@@ -58,3 +59,21 @@ def test_build_delta_figures_render_expected_titles_and_axes() -> None:
     assert len(per_lap_figure.data) == 1
     assert per_lap_figure.layout.title.text == "Per-Lap Delta (VER - NOR)"
     assert per_lap_figure.layout.yaxis.title.text == "Lap delta (s)"
+
+
+def test_build_track_compare_figure_renders_segment_lines() -> None:
+    compare_rows = pd.DataFrame(
+        {
+            "driver_a": pd.Series(["VER", "VER", "VER"], dtype="string"),
+            "driver_b": pd.Series(["NOR", "NOR", "NOR"], dtype="string"),
+            "distance_m": [0.0, 10.0, 20.0],
+            "plot_x": [0.0, 1.0, 2.0],
+            "plot_y": [0.0, 0.5, 1.0],
+            "faster_driver_segment": pd.Series(["VER", "NOR", pd.NA], dtype="string"),
+        }
+    )
+
+    figure = build_track_compare_figure(compare_rows)
+
+    assert len(figure.data) == 2
+    assert figure.layout.title.text == "Track Comparison (VER vs NOR)"

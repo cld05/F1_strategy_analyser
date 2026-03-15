@@ -144,3 +144,43 @@ def build_per_lap_delta_figure(delta_plot_rows: pd.DataFrame) -> go.Figure:
     figure.update_xaxes(title_text="Lap")
     figure.update_yaxes(title_text="Lap delta (s)")
     return figure
+
+
+def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
+    driver_a = str(track_compare_rows.iloc[0]["driver_a"])
+    driver_b = str(track_compare_rows.iloc[0]["driver_b"])
+    color_map = {
+        driver_a: "#d62828",
+        driver_b: "#1d3557",
+        pd.NA: "#6c757d",
+        "": "#6c757d",
+    }
+    figure = go.Figure()
+
+    for row_index in range(1, len(track_compare_rows)):
+        start_row = track_compare_rows.iloc[row_index - 1]
+        end_row = track_compare_rows.iloc[row_index]
+        faster_driver = end_row["faster_driver_segment"]
+        color = color_map.get(faster_driver, "#6c757d")
+        figure.add_trace(
+            go.Scatter(
+                x=[start_row["plot_x"], end_row["plot_x"]],
+                y=[start_row["plot_y"], end_row["plot_y"]],
+                mode="lines",
+                line={"color": color, "width": 4},
+                hovertemplate=(
+                    f"Distance {float(end_row['distance_m']):.1f} m<br>"
+                    f"Faster: {faster_driver if pd.notna(faster_driver) else 'Tie'}<extra></extra>"
+                ),
+                showlegend=False,
+            )
+        )
+
+    figure.update_layout(
+        title=f"Track Comparison ({driver_a} vs {driver_b})",
+        margin={"l": 24, "r": 24, "t": 64, "b": 24},
+        height=560,
+    )
+    figure.update_xaxes(visible=False)
+    figure.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
+    return figure
