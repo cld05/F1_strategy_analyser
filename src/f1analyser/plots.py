@@ -99,3 +99,48 @@ def build_lap_time_trend_figure(
         height=480,
     )
     return figure
+
+
+def build_cumulative_delta_figure(delta_plot_rows: pd.DataFrame) -> go.Figure:
+    driver_a = str(delta_plot_rows.iloc[0]["driver_a"])
+    driver_b = str(delta_plot_rows.iloc[0]["driver_b"])
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=delta_plot_rows["lap_number"],
+            y=delta_plot_rows["cum_delta_s"],
+            mode="lines+markers",
+            name="Cumulative delta",
+            hovertemplate="Lap %{x}<br>Delta %{y:.3f}s<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        title=f"Cumulative Delta ({driver_a} - {driver_b})",
+        margin={"l": 32, "r": 24, "t": 64, "b": 32},
+        height=420,
+    )
+    figure.update_xaxes(title_text="Lap")
+    figure.update_yaxes(title_text="Cumulative delta (s)")
+    return figure
+
+
+def build_per_lap_delta_figure(delta_plot_rows: pd.DataFrame) -> go.Figure:
+    driver_a = str(delta_plot_rows.iloc[0]["driver_a"])
+    driver_b = str(delta_plot_rows.iloc[0]["driver_b"])
+    figure = go.Figure()
+    figure.add_trace(
+        go.Bar(
+            x=delta_plot_rows["lap_number"],
+            y=delta_plot_rows["lap_delta_s"],
+            name="Per-lap delta",
+            hovertemplate="Lap %{x}<br>Delta %{y:.3f}s<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        title=f"Per-Lap Delta ({driver_a} - {driver_b})",
+        margin={"l": 32, "r": 24, "t": 64, "b": 32},
+        height=420,
+    )
+    figure.update_xaxes(title_text="Lap")
+    figure.update_yaxes(title_text="Lap delta (s)")
+    return figure

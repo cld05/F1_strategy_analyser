@@ -4,7 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from f1analyser.delta import REQUIRED_DELTA_COLUMNS, DeltaLapsError, build_delta_laps
+from f1analyser.delta import (
+    REQUIRED_DELTA_COLUMNS,
+    REQUIRED_DELTA_PLOT_COLUMNS,
+    DeltaLapsError,
+    build_delta_laps,
+    build_delta_plot_rows,
+)
 
 
 def _fixture_laps_filtered() -> pd.DataFrame:
@@ -64,3 +70,14 @@ def test_build_delta_laps_cumulative_times_stop_only_on_missing_pair_rows() -> N
 def test_build_delta_laps_requires_exactly_two_drivers() -> None:
     with pytest.raises(DeltaLapsError):
         build_delta_laps(_fixture_laps_filtered(), ["VER"])
+
+
+def test_build_delta_plot_rows_keeps_only_valid_comparable_laps() -> None:
+    delta_laps = build_delta_laps(_fixture_laps_filtered(), ["VER", "NOR"])
+
+    plot_rows = build_delta_plot_rows(delta_laps)
+
+    assert list(plot_rows.columns) == REQUIRED_DELTA_PLOT_COLUMNS
+    assert plot_rows["lap_number"].tolist() == [1]
+    assert plot_rows["lap_delta_s"].tolist() == [pytest.approx(0.5)]
+    assert plot_rows["cum_delta_s"].tolist() == [pytest.approx(0.5)]

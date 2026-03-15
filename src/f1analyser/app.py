@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-from f1analyser.delta import DeltaLapsError, build_delta_laps
+from f1analyser.delta import DeltaLapsError, build_delta_laps, build_delta_plot_rows
 from f1analyser.filters import build_laps_filtered
 from f1analyser.fitting import LapTrendError, build_lap_trend_inputs
 from f1analyser.laps import CanonicalLapsError, load_or_build_canonical_laps
-from f1analyser.plots import build_lap_time_trend_figure
+from f1analyser.plots import (
+    build_cumulative_delta_figure,
+    build_lap_time_trend_figure,
+    build_per_lap_delta_figure,
+)
 from f1analyser.session_loader import (
     SessionLoadError,
     available_seasons,
@@ -191,12 +195,21 @@ def main() -> None:
         st.info("MVP scaffold.")
 
     with tabs[3]:
-        st.subheader("Lap-level comparison data")
+        st.subheader("Delta plots")
         delta_laps = st.session_state.get("delta_laps")
         if delta_laps is None:
-            st.info("Build canonical laps to prepare the aligned comparison table.")
+            st.info("Build canonical laps to prepare delta plots.")
         else:
+            try:
+                delta_plot_rows = build_delta_plot_rows(delta_laps)
+            except DeltaLapsError as exc:
+                st.error(str(exc))
             st.dataframe(delta_laps, use_container_width=True)
+            if "delta_plot_rows" in locals():
+                cumulative_figure = build_cumulative_delta_figure(delta_plot_rows)
+                per_lap_figure = build_per_lap_delta_figure(delta_plot_rows)
+                st.plotly_chart(cumulative_figure, use_container_width=True)
+                st.plotly_chart(per_lap_figure, use_container_width=True)
 
     with tabs[4]:
         st.subheader("Lap time trends")

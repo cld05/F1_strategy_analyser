@@ -19,6 +19,14 @@ REQUIRED_DELTA_COLUMNS: list[str] = [
     "exclude_reason",
 ]
 
+REQUIRED_DELTA_PLOT_COLUMNS: list[str] = [
+    "lap_number",
+    "driver_a",
+    "driver_b",
+    "lap_delta_s",
+    "cum_delta_s",
+]
+
 
 class DeltaLapsError(ValueError):
     """Raised when delta table inputs are invalid."""
@@ -122,3 +130,20 @@ def build_delta_laps(
     )
     delta_laps["exclude_reason"] = delta_laps["exclude_reason"].astype("string")
     return delta_laps
+
+
+def build_delta_plot_rows(delta_laps: pd.DataFrame) -> pd.DataFrame:
+    if delta_laps.empty:
+        raise DeltaLapsError("Delta laps table is empty.")
+
+    required_columns = set(REQUIRED_DELTA_COLUMNS)
+    missing_columns = required_columns.difference(delta_laps.columns)
+    if missing_columns:
+        missing = ", ".join(sorted(missing_columns))
+        raise DeltaLapsError(f"Delta laps table is missing required columns: {missing}")
+
+    plot_rows = delta_laps[delta_laps["valid_for_delta"]].copy()
+    if plot_rows.empty:
+        raise DeltaLapsError("No valid comparable laps available for delta plots.")
+
+    return plot_rows[REQUIRED_DELTA_PLOT_COLUMNS].reset_index(drop=True)
