@@ -5,6 +5,7 @@ import pandas as pd
 from f1analyser.plots import (
     build_cumulative_delta_figure,
     build_lap_time_trend_figure,
+    build_telemetry_compare_figure,
     build_per_lap_delta_figure,
     build_track_compare_figure,
 )
@@ -77,3 +78,27 @@ def test_build_track_compare_figure_renders_segment_lines() -> None:
 
     assert len(figure.data) == 2
     assert figure.layout.title.text == "Track Comparison (VER vs NOR)"
+
+
+def test_build_telemetry_compare_figure_renders_three_stacked_panels() -> None:
+    telemetry_compare_rows = pd.DataFrame(
+        {
+            "driver_a": pd.Series(["VER", "VER"], dtype="string"),
+            "driver_b": pd.Series(["NOR", "NOR"], dtype="string"),
+            "distance_m": [0.0, 10.0],
+            "speed_a": [100.0, 105.0],
+            "speed_b": [98.0, 103.0],
+            "throttle_a": [70.0, 80.0],
+            "throttle_b": [68.0, 77.0],
+            "brake_a": [0.0, 5.0],
+            "brake_b": [1.0, 3.0],
+        }
+    )
+
+    figure = build_telemetry_compare_figure(telemetry_compare_rows)
+
+    assert len(figure.data) == 6
+    assert figure.layout.title.text == "Telemetry Comparison (VER vs NOR)"
+    assert figure.layout.yaxis.title.text == "Throttle"
+    assert figure.layout.yaxis2.title.text == "Brake"
+    assert figure.layout.yaxis3.title.text == "Speed"

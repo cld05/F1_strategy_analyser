@@ -184,3 +184,53 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
     return figure
+
+
+def build_telemetry_compare_figure(telemetry_compare_rows: pd.DataFrame) -> go.Figure:
+    driver_a = str(telemetry_compare_rows.iloc[0]["driver_a"])
+    driver_b = str(telemetry_compare_rows.iloc[0]["driver_b"])
+    figure = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.06,
+        subplot_titles=("Throttle", "Brake", "Speed"),
+    )
+
+    series_config = [
+        ("throttle_a", "throttle_b", "Throttle", "Throttle"),
+        ("brake_a", "brake_b", "Brake", "Brake"),
+        ("speed_a", "speed_b", "Speed", "Speed"),
+    ]
+    for row_index, (column_a, column_b, title, y_axis_title) in enumerate(series_config, start=1):
+        figure.add_trace(
+            go.Scatter(
+                x=telemetry_compare_rows["distance_m"],
+                y=telemetry_compare_rows[column_a],
+                mode="lines",
+                name=driver_a,
+                showlegend=row_index == 1,
+            ),
+            row=row_index,
+            col=1,
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=telemetry_compare_rows["distance_m"],
+                y=telemetry_compare_rows[column_b],
+                mode="lines",
+                name=driver_b,
+                showlegend=row_index == 1,
+            ),
+            row=row_index,
+            col=1,
+        )
+        figure.update_yaxes(title_text=y_axis_title, row=row_index, col=1)
+
+    figure.update_xaxes(title_text="Distance (m)", row=3, col=1)
+    figure.update_layout(
+        title=f"Telemetry Comparison ({driver_a} vs {driver_b})",
+        margin={"l": 40, "r": 24, "t": 64, "b": 32},
+        height=760,
+    )
+    return figure

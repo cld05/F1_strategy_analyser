@@ -10,6 +10,7 @@ from f1analyser.plots import (
     build_cumulative_delta_figure,
     build_lap_time_trend_figure,
     build_per_lap_delta_figure,
+    build_telemetry_compare_figure,
     build_track_compare_figure,
 )
 from f1analyser.session_loader import (
@@ -18,7 +19,11 @@ from f1analyser.session_loader import (
     extract_session_metadata,
     load_race_session,
 )
-from f1analyser.telemetry import TrackCompareError, build_track_compare_rows
+from f1analyser.telemetry import (
+    TrackCompareError,
+    build_telemetry_compare_rows,
+    build_track_compare_rows,
+)
 
 
 def _render_session_tab() -> None:
@@ -205,8 +210,9 @@ def main() -> None:
             "3) Race delta",
             "4) Lap trends",
             "5) Track comparison",
-            "6) Methods",
-            "7) Debug",
+            "6) Telemetry comparison",
+            "7) Methods",
+            "8) Debug",
         ]
     )
 
@@ -217,10 +223,6 @@ def main() -> None:
         _render_driver_tab()
 
     with tabs[2]:
-        st.subheader("Stints & pits tables")
-        st.info("MVP scaffold.")
-
-    with tabs[3]:
         st.subheader("Delta plots")
         delta_laps = st.session_state.get("delta_laps")
         if delta_laps is None:
@@ -297,10 +299,39 @@ def main() -> None:
                     st.plotly_chart(figure, use_container_width=True)
 
     with tabs[5]:
+        st.subheader("Telemetry comparison")
+        loaded_session = st.session_state.get("loaded_session")
+        canonical_laps = st.session_state.get("canonical_laps")
+        selected_drivers = st.session_state.get("selected_drivers")
+        if loaded_session is None or canonical_laps is None or selected_drivers is None:
+            st.info("Build canonical laps to prepare telemetry comparison.")
+        else:
+            driver_a, driver_b = selected_drivers
+            lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
+            lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
+            if not lap_options_a or not lap_options_b:
+                st.info("No lap numbers are available for one or both selected drivers.")
+            else:
+                selected_lap_a = st.selectbox("Telemetry lap for driver A", options=lap_options_a, key="telemetry_lap_a")
+                selected_lap_b = st.selectbox("Telemetry lap for driver B", options=lap_options_b, key="telemetry_lap_b")
+                try:
+                    lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
+                    lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
+                    telemetry_compare_rows, telemetry_diagnostics = build_telemetry_compare_rows(lap_a, lap_b)
+                except TrackCompareError as exc:
+                    st.error(str(exc))
+                else:
+                    for warning in telemetry_diagnostics.warnings:
+                        st.warning(warning)
+                    figure = build_telemetry_compare_figure(telemetry_compare_rows)
+                    st.plotly_chart(figure, use_container_width=True)
+                    st.dataframe(telemetry_compare_rows, use_container_width=True)
+
+    with tabs[6]:
         st.subheader("Methods")
         st.info("MVP scaffold.")
 
-    with tabs[6]:
+    with tabs[7]:
         st.subheader("Debug panels")
         dropped_laps = st.session_state.get("dropped_laps")
         if dropped_laps is None:
