@@ -29,6 +29,14 @@ from f1analyser.telemetry import (
 )
 
 
+TRACK_COMPARISON_LIMITATIONS = """
+Remaining limitations
+
+Corner markers depend on FastF1 circuit metadata availability. When missing or incomplete, the telemetry plot renders without corner markers and shows a warning.
+Track Comparison still projects the three official sectors onto the sampled telemetry path using sector-time-derived boundaries. It does not use a circuit-native sector geometry map.
+""".strip()
+
+
 def _render_debug_tables() -> None:
     show_debug = st.checkbox("Show intermediate tables", value=False)
     if not show_debug:
@@ -242,6 +250,23 @@ def _refresh_analysis_tables() -> None:
     st.session_state["dropped_laps"] = diagnostics.dropped_laps
 
 
+def _sync_exclude_sc_vsc_from(widget_key: str) -> None:
+    st.session_state["exclude_sc_vsc"] = bool(st.session_state.get(widget_key, False))
+
+
+def _shared_exclude_sc_vsc_checkbox(*, label: str, widget_key: str) -> bool:
+    current_value = bool(st.session_state.get("exclude_sc_vsc", False))
+    st.session_state[widget_key] = current_value
+    return bool(
+        st.checkbox(
+            label,
+            key=widget_key,
+            on_change=_sync_exclude_sc_vsc_from,
+            args=(widget_key,),
+        )
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="F1 Post-Race Analyzer", layout="wide")
     st.title("F1 Post-Race Analyzer — MVP")
@@ -267,10 +292,9 @@ def main() -> None:
 
     with tabs[2]:
         st.subheader("Delta plots")
-        exclude_sc_vsc = st.checkbox(
-            "Exclude SC/VSC laps from analysis",
-            value=bool(st.session_state.get("exclude_sc_vsc", False)),
-            key="exclude_sc_vsc",
+        exclude_sc_vsc = _shared_exclude_sc_vsc_checkbox(
+            label="Exclude SC/VSC laps from analysis",
+            widget_key="exclude_sc_vsc_race_delta",
         )
         st.caption(f"SC/VSC exclusion active: {exclude_sc_vsc}")
         if st.session_state.get("canonical_laps") is not None:
@@ -283,12 +307,12 @@ def main() -> None:
                 delta_plot_rows = build_delta_plot_rows(delta_laps)
             except DeltaLapsError as exc:
                 st.error(str(exc))
-            st.dataframe(delta_laps, use_container_width=True)
             if "delta_plot_rows" in locals():
                 cumulative_figure = build_cumulative_delta_figure(delta_plot_rows)
                 per_lap_figure = build_per_lap_delta_figure(delta_plot_rows)
                 st.plotly_chart(cumulative_figure, use_container_width=True)
                 st.plotly_chart(per_lap_figure, use_container_width=True)
+            st.dataframe(delta_laps, use_container_width=True)
 
     with tabs[3]:
         st.subheader("Lap time trends")
@@ -297,39 +321,55 @@ def main() -> None:
         if filtered_laps is None or selected_drivers is None:
             st.info("Build canonical laps to prepare lap trend plots.")
         else:
-            polynomial_degree = st.selectbox(
-                "Polynomial degree",
-                options=[1, 2, 3, 4, 5],
-                index=1,
+            exclude_sc_vsc = _shared_exclude_sc_vsc_checkbox(
+                label="Exclude SC/VSC laps from comparison and fitting",
+                widget_key="exclude_sc_vsc_lap_trends",
             )
-            st.session_state["polynomial_degree"] = int(polynomial_degree)
-            try:
-                plot_rows, fit_rows, stint_insights, diagnostics = build_lap_trend_inputs(
-                    filtered_laps,
-                    selected_drivers,
-                    polynomial_degree=polynomial_degree,
-                )
-            except LapTrendError as exc:
-                st.error(str(exc))
+            st.caption(f"SC/VSC exclusion active: {exclude_sc_vsc}")
+            if st.session_state.get("canonical_laps") is not None:
+                _refresh_analysis_tables()
+            filtered_laps = st.session_state.get("laps_filtered")
+            if filtered_laps is None:
+                st.info("Build canonical laps to prepare lap trend plots.")
             else:
-                st.session_state["lap_trend_plot_rows"] = plot_rows
-                st.session_state["lap_trend_fit_rows"] = fit_rows
-                st.session_state["lap_trend_stint_insights"] = stint_insights
-                for warning in diagnostics.warnings:
-                    st.warning(warning)
-                figure = build_lap_time_trend_figure(
-                    plot_rows,
-                    fit_rows,
-                    selected_drivers,
-                    polynomial_degree=polynomial_degree,
+                polynomial_degree = st.selectbox(
+                    "Polynomial degree",
+                    options=[1, 2, 3, 4, 5],
+                    index=1,
                 )
-                st.plotly_chart(figure, use_container_width=True)
-                if not stint_insights.empty:
-                    st.write("Stint fit insights")
-                    st.dataframe(stint_insights, use_container_width=True)
+                st.session_state["polynomial_degree"] = int(polynomial_degree)
+                try:
+                    plot_rows, fit_rows, stint_insights, diagnostics = build_lap_trend_inputs(
+                        filtered_laps,
+                        selected_drivers,
+                        polynomial_degree=polynomial_degree,
+                    )
+                except LapTrendError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state["lap_trend_plot_rows"] = plot_rows
+                    st.session_state["lap_trend_fit_rows"] = fit_rows
+                    st.session_state["lap_trend_stint_insights"] = stint_insights
+                    for warning in diagnostics.warnings:
+                        st.warning(warning)
+                    figure = build_lap_time_trend_figure(
+                        plot_rows,
+                        fit_rows,
+                        selected_drivers,
+                        polynomial_degree=polynomial_degree,
+                    )
+                    st.plotly_chart(figure, use_container_width=True)
+                    if not stint_insights.empty:
+                        st.write("Stint fit insights")
+                        st.dataframe(stint_insights, use_container_width=True)
 
     with tabs[4]:
-        st.subheader("Track comparison")
+        track_header, track_help = st.columns([0.94, 0.06])
+        with track_header:
+            st.subheader("Track comparison")
+        with track_help:
+            with st.popover("?"):
+                st.markdown(TRACK_COMPARISON_LIMITATIONS)
         loaded_session = st.session_state.get("loaded_session")
         canonical_laps = st.session_state.get("canonical_laps")
         selected_drivers = st.session_state.get("selected_drivers")
@@ -348,11 +388,14 @@ def main() -> None:
                     lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
                     lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
                     track_compare_rows, track_diagnostics = build_track_compare_rows(lap_a, lap_b)
+                    corner_markers, _corner_warnings = build_corner_markers(loaded_session)
                 except TrackCompareError as exc:
                     st.error(str(exc))
                 else:
                     for warning in track_diagnostics.warnings:
                         st.warning(warning)
+                    if corner_markers is None:
+                        st.warning("Track corner numbering is unavailable for this session.")
                     figure = build_track_compare_figure(track_compare_rows)
                     st.plotly_chart(figure, use_container_width=True)
 
@@ -370,8 +413,8 @@ def main() -> None:
             if not lap_options_a or not lap_options_b:
                 st.info("No lap numbers are available for one or both selected drivers.")
             else:
-                selected_lap_a = st.selectbox("Telemetry lap for driver A", options=lap_options_a, key="telemetry_lap_a")
-                selected_lap_b = st.selectbox("Telemetry lap for driver B", options=lap_options_b, key="telemetry_lap_b")
+                selected_lap_a = st.selectbox(f"Telemetry lap for {driver_a}", options=lap_options_a, key="telemetry_lap_a")
+                selected_lap_b = st.selectbox(f"Telemetry lap for {driver_b}", options=lap_options_b, key="telemetry_lap_b")
                 try:
                     lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
                     lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
