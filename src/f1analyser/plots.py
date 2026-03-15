@@ -22,6 +22,7 @@ STINT_SYMBOLS: list[str] = [
     "triangle-down",
     "cross",
 ]
+FIT_COLORS: list[str] = ["#1d3557", "#457b9d", "#2a9d8f", "#6d597a", "#e76f51"]
 
 
 def _compound_color(compound: str) -> str:
@@ -47,6 +48,8 @@ def build_lap_time_trend_figure(
 ) -> go.Figure:
     driver_a, driver_b = selected_drivers
     figure = make_subplots(rows=1, cols=2, subplot_titles=selected_drivers, shared_yaxes=True)
+    shown_compounds: set[str] = set()
+    shown_stints: set[str] = set()
 
     for column_index, driver in enumerate((driver_a, driver_b), start=1):
         driver_rows = plot_rows[plot_rows["driver"] == driver].copy()
@@ -68,22 +71,63 @@ def build_lap_time_trend_figure(
                     "Compound %{customdata[0]}<br>"
                     "Stint %{customdata[1]}<extra></extra>"
                 ),
-                showlegend=False,
+                showlegend=True,
+                legendgroup=f"{driver}-laps",
             ),
             row=1,
             col=column_index,
         )
 
-        driver_fit = fit_rows[fit_rows["driver"] == driver].copy()
-        if not driver_fit.empty:
+        for compound in sorted(driver_rows["compound_display"].dropna().astype("string").unique().tolist()):
+            if compound in shown_compounds:
+                continue
+            shown_compounds.add(compound)
             figure.add_trace(
                 go.Scatter(
-                    x=driver_fit["lap_number"],
-                    y=driver_fit["fit_lap_time_s"],
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker={"color": _compound_color(str(compound)), "size": 9, "symbol": "circle"},
+                    name=f"Compound {compound}",
+                    showlegend=True,
+                ),
+                row=1,
+                col=column_index,
+            )
+
+        for stint_display in sorted(driver_rows["stint_display"].dropna().astype("string").unique().tolist()):
+            if stint_display in shown_stints:
+                continue
+            shown_stints.add(stint_display)
+            figure.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker={"color": "#6c757d", "size": 9, "symbol": _stint_symbol(str(stint_display))},
+                    name=f"Stint {stint_display}",
+                    showlegend=True,
+                ),
+                row=1,
+                col=column_index,
+            )
+
+        driver_fit = fit_rows[fit_rows["driver"] == driver].copy()
+        for fit_index, stint_display in enumerate(
+            sorted(driver_fit["stint_display"].dropna().astype("string").unique().tolist())
+        ):
+            stint_fit = driver_fit[driver_fit["stint_display"] == stint_display].copy()
+            if stint_fit.empty:
+                continue
+            figure.add_trace(
+                go.Scatter(
+                    x=stint_fit["lap_number"],
+                    y=stint_fit["fit_lap_time_s"],
                     mode="lines",
-                    name=f"{driver} fit",
-                    line={"width": 2},
-                    showlegend=False,
+                    name=f"{driver} fit stint {stint_display}",
+                    line={"width": 2, "color": FIT_COLORS[fit_index % len(FIT_COLORS)]},
+                    showlegend=True,
+                    legendgroup=f"{driver}-fit-{stint_display}",
                     hovertemplate="Fit lap %{x:.1f}<br>%{y:.3f}s<extra></extra>",
                 ),
                 row=1,
@@ -97,6 +141,7 @@ def build_lap_time_trend_figure(
         title=f"Lap Time Trends (Polynomial degree {polynomial_degree})",
         margin={"l": 32, "r": 24, "t": 64, "b": 32},
         height=480,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0},
     )
     return figure
 
@@ -156,23 +201,36 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
         "": "#6c757d",
     }
     figure = go.Figure()
-
-    for row_index in range(1, len(track_compare_rows)):
-        start_row = track_compare_rows.iloc[row_index - 1]
-        end_row = track_compare_rows.iloc[row_index]
-        faster_driver = end_row["faster_driver_segment"]
+    for sector_number in [1, 2, 3]:
+        sector_rows = track_compare_rows[track_compare_rows["sector_number"] == sector_number].copy()
+        if sector_rows.empty:
+            continue
+        faster_driver = sector_rows["faster_driver_segment"].iloc[0]
         color = color_map.get(faster_driver, "#6c757d")
         figure.add_trace(
             go.Scatter(
-                x=[start_row["plot_x"], end_row["plot_x"]],
-                y=[start_row["plot_y"], end_row["plot_y"]],
+                x=sector_rows["plot_x"],
+                y=sector_rows["plot_y"],
                 mode="lines",
-                line={"color": color, "width": 4},
+                line={"color": color, "width": 5},
+                name=f"Sector {sector_number}",
+                showlegend=False,
                 hovertemplate=(
-                    f"Distance {float(end_row['distance_m']):.1f} m<br>"
+                    f"Sector {sector_number}<br>"
                     f"Faster: {faster_driver if pd.notna(faster_driver) else 'Tie'}<extra></extra>"
                 ),
-                showlegend=False,
+            )
+        )
+
+    for legend_label, color in [(driver_a, color_map[driver_a]), (driver_b, color_map[driver_b])]:
+        figure.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="lines",
+                line={"color": color, "width": 5},
+                name=legend_label,
+                showlegend=True,
             )
         )
 
@@ -180,6 +238,7 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
         title=f"Track Comparison ({driver_a} vs {driver_b})",
         margin={"l": 24, "r": 24, "t": 64, "b": 24},
         height=560,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0},
     )
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)

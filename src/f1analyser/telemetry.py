@@ -36,18 +36,27 @@ def _driver_value(lap: Any) -> str:
 
 def _lap_telemetry(lap: Any) -> pd.DataFrame:
     telemetry = lap.get_telemetry()
-    required_columns = {"Distance", "X", "Y", "Speed"}
+    required_columns = {"Distance", "X", "Y"}
     missing = required_columns.difference(telemetry.columns)
     if missing:
         missing_list = ", ".join(sorted(missing))
         raise TrackCompareError(f"Telemetry is missing required columns: {missing_list}")
 
-    cleaned = telemetry.loc[:, ["Distance", "X", "Y", "Speed"]].copy()
-    cleaned = cleaned.dropna(subset=["Distance", "X", "Y", "Speed"]).sort_values("Distance", kind="stable")
+    cleaned = telemetry.loc[:, ["Distance", "X", "Y"]].copy()
+    cleaned = cleaned.dropna(subset=["Distance", "X", "Y"]).sort_values("Distance", kind="stable")
     cleaned = cleaned.drop_duplicates(subset="Distance", keep="first")
     if len(cleaned) < 2:
         raise TrackCompareError("Telemetry must contain at least 2 valid distance samples.")
     return cleaned.reset_index(drop=True)
+
+
+def _sector_time_seconds(lap: Any, field_name: str) -> float:
+    value = getattr(lap, field_name, None)
+    if value is None and isinstance(lap, pd.Series):
+        value = lap.get(field_name)
+    if value is None or pd.isna(value):
+        raise TrackCompareError(f"Selected lap is missing {field_name}.")
+    return float(pd.to_timedelta(value).total_seconds())
 
 
 def _telemetry_compare_source(lap: Any) -> pd.DataFrame:
@@ -97,12 +106,44 @@ def build_track_compare_rows(
     y_a = _interpolate_series(sample_distance, telemetry_a, "Y")
     x_b = _interpolate_series(sample_distance, telemetry_b, "X")
     y_b = _interpolate_series(sample_distance, telemetry_b, "Y")
-    speed_a = _interpolate_series(sample_distance, telemetry_a, "Speed")
-    speed_b = _interpolate_series(sample_distance, telemetry_b, "Speed")
 
     driver_a = _driver_value(lap_a)
     driver_b = _driver_value(lap_b)
-    faster_driver = np.where(speed_a > speed_b, driver_a, np.where(speed_b > speed_a, driver_b, pd.NA))
+    sector_times_a = np.array(
+        [
+            _sector_time_seconds(lap_a, "Sector1Time"),
+            _sector_time_seconds(lap_a, "Sector2Time"),
+            _sector_time_seconds(lap_a, "Sector3Time"),
+        ],
+        dtype="float64",
+    )
+    sector_times_b = np.array(
+        [
+            _sector_time_seconds(lap_b, "Sector1Time"),
+            _sector_time_seconds(lap_b, "Sector2Time"),
+            _sector_time_seconds(lap_b, "Sector3Time"),
+        ],
+        dtype="float64",
+    )
+    total_a = float(sector_times_a.sum())
+    total_b = float(sector_times_b.sum())
+    sector_boundaries = np.array(
+        [
+            0.0,
+            ((sector_times_a[0] / total_a) + (sector_times_b[0] / total_b)) / 2.0,
+            ((sector_times_a[:2].sum() / total_a) + (sector_times_b[:2].sum() / total_b)) / 2.0,
+            1.0,
+        ],
+        dtype="float64",
+    ) * max_common_distance
+    sector_numbers = np.searchsorted(sector_boundaries[1:], sample_distance, side="right") + 1
+    sector_numbers = np.clip(sector_numbers, 1, 3)
+    sector_winners = np.where(
+        sector_times_a < sector_times_b,
+        driver_a,
+        np.where(sector_times_b < sector_times_a, driver_b, pd.NA),
+    )
+    faster_driver = pd.Series([sector_winners[sector - 1] for sector in sector_numbers], dtype="string")
 
     compare_rows = pd.DataFrame(
         {
@@ -117,9 +158,8 @@ def build_track_compare_rows(
             "y_b": y_b,
             "plot_x": (x_a + x_b) / 2.0,
             "plot_y": (y_a + y_b) / 2.0,
-            "speed_a": speed_a,
-            "speed_b": speed_b,
-            "faster_driver_segment": pd.Series(faster_driver, dtype="string"),
+            "sector_number": pd.Series(sector_numbers, dtype="Int64"),
+            "faster_driver_segment": faster_driver,
         }
     )
 

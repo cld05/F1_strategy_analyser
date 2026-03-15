@@ -206,13 +206,14 @@ Requirements:
 - x-axis: lap number
 - y-axis: lap time in seconds
 - show scatter points for laps
-- show polynomial fit curve
+- show polynomial fit curve per stint
 - polynomial degree must be user selectable
 - compounds must be visually encoded
 - stints must be visually indicated
 - pit laps must be removed
 - optional SC/VSC removal via checkbox
-- fit must use only filtered valid laps
+- fit must use only filtered valid laps within each stint
+- include concise stint-level fit insights
 
 The plot must support the visual style of:
 - raw lap-time scatter
@@ -245,7 +246,8 @@ For the two selected drivers:
 Requirements:
 - color track segments according to which driver is faster
 - use one color per driver
-- comparison basis may be segment time or local speed-derived advantage after distance alignment
+- comparison basis must use official sector times for Sector 1, Sector 2, and Sector 3
+- the track map must render three sector sections colored by the driver faster in that official sector
 - method must be deterministic and recorded in `methods`
 
 Notes:
@@ -281,21 +283,23 @@ Minimum tabs:
 
 2. Driver selection
    - exactly two drivers
+   - default to `RUS` and `LEC` when both are available; otherwise use the first two available drivers
 
 3. Race delta
    - cumulative delta plot
    - per-lap delta plot
    - filtering controls
+   - SC/VSC exclusion checkbox
 
 4. Lap time trends
    - side-by-side lap time plots
    - polynomial degree selector
-   - SC/VSC exclusion checkbox
+   - per-stint fit insights
 
 5. Track comparison
    - track layout
-   - selected lap per driver
-   - faster-driver segment map
+   - selected lap per named driver
+   - faster-driver sector map
 
 6. Telemetry comparison
    - lap selector per driver

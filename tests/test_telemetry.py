@@ -6,10 +6,12 @@ from f1analyser.telemetry import build_telemetry_compare_rows, build_track_compa
 
 
 class DummyLap:
-    def __init__(self, driver: str, lap_number: int, telemetry: pd.DataFrame) -> None:
+    def __init__(self, driver: str, lap_number: int, telemetry: pd.DataFrame, **fields: object) -> None:
         self.Driver = driver
         self.LapNumber = lap_number
         self._telemetry = telemetry
+        for key, value in fields.items():
+            setattr(self, key, value)
 
     def get_telemetry(self) -> pd.DataFrame:
         return self._telemetry.copy()
@@ -24,9 +26,11 @@ def test_build_track_compare_rows_resamples_to_shared_distance_grid() -> None:
                 "Distance": [0.0, 10.0, 20.0, 30.0],
                 "X": [0.0, 1.0, 2.0, 3.0],
                 "Y": [0.0, 1.0, 1.5, 2.0],
-                "Speed": [100.0, 105.0, 110.0, 108.0],
             }
         ),
+        Sector1Time=pd.Timedelta(seconds=25.0),
+        Sector2Time=pd.Timedelta(seconds=27.0),
+        Sector3Time=pd.Timedelta(seconds=28.0),
     )
     lap_b = DummyLap(
         "NOR",
@@ -36,9 +40,11 @@ def test_build_track_compare_rows_resamples_to_shared_distance_grid() -> None:
                 "Distance": [0.0, 15.0, 30.0],
                 "X": [0.0, 1.4, 3.2],
                 "Y": [0.0, 1.2, 2.2],
-                "Speed": [99.0, 107.0, 111.0],
             }
         ),
+        Sector1Time=pd.Timedelta(seconds=24.0),
+        Sector2Time=pd.Timedelta(seconds=28.0),
+        Sector3Time=pd.Timedelta(seconds=29.0),
     )
 
     compare_rows, diagnostics = build_track_compare_rows(lap_a, lap_b, distance_step_m=10.0)
@@ -46,6 +52,7 @@ def test_build_track_compare_rows_resamples_to_shared_distance_grid() -> None:
     assert compare_rows["distance_m"].tolist() == [0.0, 10.0, 20.0, 30.0]
     assert compare_rows["driver_a"].tolist() == ["VER"] * 4
     assert compare_rows["driver_b"].tolist() == ["NOR"] * 4
+    assert compare_rows["sector_number"].tolist() == [1, 2, 3, 3]
     assert diagnostics.warnings == []
 
 
@@ -58,9 +65,11 @@ def test_build_track_compare_rows_segment_classification_is_deterministic() -> N
                 "Distance": [0.0, 10.0, 20.0],
                 "X": [0.0, 1.0, 2.0],
                 "Y": [0.0, 0.5, 1.0],
-                "Speed": [100.0, 102.0, 99.0],
             }
         ),
+        Sector1Time=pd.Timedelta(seconds=24.0),
+        Sector2Time=pd.Timedelta(seconds=30.0),
+        Sector3Time=pd.Timedelta(seconds=26.0),
     )
     lap_b = DummyLap(
         "NOR",
@@ -70,9 +79,11 @@ def test_build_track_compare_rows_segment_classification_is_deterministic() -> N
                 "Distance": [0.0, 10.0, 20.0],
                 "X": [0.0, 1.2, 2.3],
                 "Y": [0.0, 0.6, 1.1],
-                "Speed": [98.0, 104.0, 99.0],
             }
         ),
+        Sector1Time=pd.Timedelta(seconds=25.0),
+        Sector2Time=pd.Timedelta(seconds=29.0),
+        Sector3Time=pd.Timedelta(seconds=26.0),
     )
 
     compare_rows, _diagnostics = build_track_compare_rows(lap_a, lap_b, distance_step_m=10.0)

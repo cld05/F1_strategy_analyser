@@ -180,11 +180,12 @@ Single shared graph:
 ### 8.2 Lap time trend plots
 Two plots side by side, one per driver:
 - scatter of lap times
-- polynomial fit curve
+- polynomial fit curve per stint
 - polynomial degree selectable in UI
 - compounds visually encoded
 - stint context visually encoded
 - use filtered data only
+- compute and surface concise stint-level fit insights
 
 ### 8.3 Per-lap delta plot
 Single shared graph:
@@ -195,9 +196,9 @@ Single shared graph:
 
 ### 8.4 Track layout faster-driver plot
 - plot circuit path
-- color segments according to faster driver for the selected laps
+- color Sector 1, Sector 2, and Sector 3 track sections according to the driver faster in each official sector
 - one color assigned to each driver
-- if detailed segment comparison is not possible immediately, implement first with distance bins and document the method
+- use official sector times as the comparison basis
 
 ### 8.5 Telemetry stacked plots
 Three vertically stacked plots:

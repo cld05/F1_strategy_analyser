@@ -24,6 +24,7 @@ def test_build_lap_time_trend_figure_renders_driver_scatter_and_fit_traces() -> 
     fit_rows = pd.DataFrame(
         {
             "driver": pd.Series(["VER", "NOR"], dtype="string"),
+            "stint_display": pd.Series(["1", "1"], dtype="string"),
             "lap_number": [1.5, 1.0],
             "fit_lap_time_s": [80.2, 79.8],
         }
@@ -36,7 +37,7 @@ def test_build_lap_time_trend_figure_renders_driver_scatter_and_fit_traces() -> 
         polynomial_degree=2,
     )
 
-    assert len(figure.data) == 4
+    assert len(figure.data) >= 7
     assert figure.layout.title.text == "Lap Time Trends (Polynomial degree 2)"
 
 
@@ -70,13 +71,14 @@ def test_build_track_compare_figure_renders_segment_lines() -> None:
             "distance_m": [0.0, 10.0, 20.0],
             "plot_x": [0.0, 1.0, 2.0],
             "plot_y": [0.0, 0.5, 1.0],
+            "sector_number": pd.Series([1, 2, 3], dtype="Int64"),
             "faster_driver_segment": pd.Series(["VER", "NOR", pd.NA], dtype="string"),
         }
     )
 
     figure = build_track_compare_figure(compare_rows)
 
-    assert len(figure.data) == 2
+    assert len(figure.data) == 5
     assert figure.layout.title.text == "Track Comparison (VER vs NOR)"
 
 
