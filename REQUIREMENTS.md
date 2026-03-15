@@ -1,316 +1,429 @@
-# REQUIREMENTS.md — F1 Post-Race Analyzer (Streamlit MVP)
+# REQUIREMENTS.md — F1 Race Analyzer (Streamlit MVP v2)
 
 ## 0. Purpose
-Build a Streamlit app that loads a Formula 1 Race session (FastF1), computes canonical tables (laps, stints, pits, methods, comparison windows, comparison summary, exports), visualizes the results with Plotly, and exports CSV + single-page PDF. The MVP supports exactly two drivers and years 2020–present.
+Build a Streamlit app that loads a Formula 1 Race session using FastF1, lets the user select exactly two drivers, extracts lap-level data directly from FastF1 `session.laps`, and visualizes relevant race and telemetry comparisons. The MVP is focused on plotting and visual comparison, not on reconstructing strategy metrics or decomposing finish deltas.
 
 ## 1. Scope (MVP)
 - Session types: **Race only**
 - Seasons: **2020 to current year**
-- Drivers: **exactly 2 drivers** selected for comparison
-- DNFs: comparisons are computed up to common lap cutoff; block if common laps < 1
-- Outputs: **tables + plots**
+- Drivers: **exactly 2 drivers**
+- Primary goal: **visual comparison of selected drivers**
+- Outputs: **plots + supporting tables**
 - Export: **CSV + single-page PDF**
-- No manual per-lap user exclusions in MVP
+- No custom pit/stint inference in MVP
+- No strategy decomposition, no residual reconciliation, no custom pit-loss model in MVP
 
 ## 2. Tech stack (MVP)
 - Python 3.11+
 - Streamlit
 - FastF1
 - pandas
+- numpy
 - plotly
-- pytest (local only)
+- scipy or numpy polynomial fit utilities
+- pytest
 - mypy strict
 - Parquet for cached processed tables
 
 ## 3. Load and caching behavior
 ### 3.1 Load constraints
 - Load operation hard timeout: **120 seconds**
-- Retry behavior: max **2 retries**; each retry logged as a warning
-- UI responsiveness: show loading state within **≤ 0.5 s**
+- Retry behavior: **max 2 retries**
+- Each retry logged as a warning
+- UI loading state visible within **≤ 0.5 s**
 
 ### 3.2 Cache strategy
-- Cache location: **local disk under project app folder** `./cache/`
-- Persist processed canonical tables as **Parquet**
-- Cache invalidation: **never invalidate** (MVP)
+- Cache location: `./cache/`
+- Persist processed canonical tables as Parquet
+- Cache processed session-level and driver-level lap tables
+- Cache invalidation: **never invalidate** in MVP
 
 ### 3.3 Authoritative source
-- When FastF1 sources disagree, use **session results** as authoritative.
+- FastF1 `session.laps` is authoritative for lap-level race data
+- FastF1 telemetry APIs are authoritative for speed/throttle/brake and track layout data
+- FastF1 lap fields are authoritative for compounds, tyre life, stint, pit-in, pit-out, and related annotations where available
 
 ## 4. Canonical tables (single source of truth)
-All canonical tables are produced for the **selected drivers** and persisted per run.
 
-### 4.1 `laps` (raw, per driver per lap)
-Required columns (minimum set):
-- `season`, `round`, `session_type`
-- `driver` (3-letter code), `driver_id` (if available)
+## 4.1 `laps`
+One row per driver per lap for selected drivers.
+
+Required columns:
+- `season`
+- `round`
+- `session_type`
+- `event_name`
+- `driver`
+- `driver_number` (if available)
+- `team` (if available)
 - `lap_number`
-- `lap_time` (seconds float or pandas Timedelta, but consistent)
+- `lap_time_s`
 - `compound`
 - `tyre_life`
-- `track_status` (string code from FastF1 TrackStatus)
-- `position` (on track, if available)
-- `gap` (to leader or to reference, define consistently)
-- `pit_in_time`, `pit_out_time`
-- `sector1`, `sector2`, `sector3`
+- `stint`
+- `track_status`
+- `position`
+- `pit_in_time`
+- `pit_out_time`
+- `is_pit_in_lap`
+- `is_pit_out_lap`
+- `is_pit_lap`
+- `is_sc_vsc_lap`
+- `is_valid_lap_time`
+- `deleted_reason` or `filter_reason` (nullable for filtered variants)
 
-### 4.2 `pits` (one row per pit event)
-Columns:
-- `driver`, `stop_index`
-- `pit_in_lap`, `pit_out_lap`
-- `laps_stationary = pit_out_lap - pit_in_lap`
-- `is_drive_through` (bool)
-- `has_time_penalty_served` (bool)
-- `warnings` (string list or joined string)
+Notes:
+- `is_pit_lap = is_pit_in_lap OR is_pit_out_lap`
+- `is_sc_vsc_lap` must reflect TrackStatus codes used by FastF1
+- `lap_time_s` must be numeric float in seconds for downstream plotting
 
-### 4.3 `stints` (one row per stint)
-Columns:
-- `driver`, `stint_id`
-- `compound`
-- `start_lap`, `end_lap`
-- `lap_count`
-- `n_laps_total`, `n_laps_clean`, `n_laps_excluded`
-- excluded breakdown counts by category (see §5)
-- `pace_median_s` (nullable)
-- `deg_slope_s_per_lap` (nullable)
-- `deg_delta_first_last_s` (nullable)
-- `warnings`
+## 4.2 `laps_filtered`
+Derived filtered table used for plotting. Same base columns as `laps` plus:
+- `include_for_lap_time_plot`
+- `include_for_delta_plot`
+- `include_for_fit`
+- `filter_reason_list`
 
-### 4.4 `methods` (definitions + parameters used in a run)
+This table must make filtering explicit instead of silently dropping rows.
+
+## 4.3 `delta_laps`
+Aligned lap comparison table between the two selected drivers.
+
+Required columns:
+- `lap_number`
+- `driver_a`
+- `driver_b`
+- `lap_time_a_s`
+- `lap_time_b_s`
+- `lap_delta_s`
+- `cum_time_a_s`
+- `cum_time_b_s`
+- `cum_delta_s`
+- `valid_for_delta`
+- `exclude_reason`
+
+Definitions:
+- `lap_delta_s = lap_time_a_s - lap_time_b_s`
+- `cum_delta_s = cum_time_a_s - cum_time_b_s`
+
+## 4.4 `telemetry_compare`
+Distance-aligned telemetry table for one selected lap from each driver.
+
+Required columns:
+- `driver_a`
+- `driver_b`
+- `lap_a`
+- `lap_b`
+- `distance_m`
+- `speed_a`
+- `speed_b`
+- `throttle_a`
+- `throttle_b`
+- `brake_a`
+- `brake_b`
+- `delta_speed`
+- `faster_driver_segment` (nullable)
+
+## 4.5 `methods`
+Definitions + parameters used in the run.
+
 Must include:
-- clean lap definition and excluded categories
-- red flag boundary exclusion rule
-- pit stop detection rule
-- tyre change / red flag continuity rule
-- pit loss method and parameters
-- pace and degradation methods
-- driver comparison and delta decomposition formulas
-- thresholds (telemetry gap drop, overlap minimum, residual threshold)
-- toggles (SC/VSC include toggle state)
+- lap filtering rules
+- pit-lap removal rule
+- SC/VSC exclusion toggle state
+- polynomial fit method and selected degree
+- delta sign convention
+- telemetry alignment method
+- track segment comparison method
+- corner-marker source and fallback behavior
+- thresholds or interpolation settings used
 
-### 4.5 `comparison_windows` (aligned overlap windows per stint pair)
-Columns:
-- `window_id`
-- `driver_a`, `driver_b`
-- `stint_a_id`, `stint_b_id`
-- `lap_start`, `lap_end`
-- `n_overlap_total`
-- `n_clean_a`, `n_clean_b`
-- `included` (bool)
-- `exclude_reason` (nullable)
-- `pace_a_window_s` (median clean lap time within window, nullable)
-- `pace_b_window_s` (nullable)
-- `window_delta_s` ( (pace_a - pace_b) * n_laps, nullable )
-
-### 4.6 `comparison_summary` (single row per run)
-Columns:
-- `driver_a`, `driver_b`
-- `L_common`
-- `observed_finish_delta_s`
-- `pit_delta_sum_s`
-- `stint_delta_sum_s`
-- `residual_s`
-- `residual_ok` (bool)
-- `residual_threshold_s` (10.0)
-- `warnings`
-
-### 4.7 `exports` (metadata)
+## 4.6 `exports`
 Columns:
 - `run_id`
 - `timestamp_iso`
-- `season`, `round`, `session_type`
-- `driver_a`, `driver_b`
-- `csv_path`, `pdf_path`
+- `season`
+- `round`
+- `session_type`
+- `driver_a`
+- `driver_b`
+- `csv_path`
+- `pdf_path`
 - `warnings_count`
 
-## 5. Deterministic lap classification (clean vs excluded)
-### 5.1 TrackStatus mapping
-TrackStatus is a string code. Interpret:
-- `1` = track clear (green)
-- `2` = yellow (sectors unknown)
-- `4` = Safety Car
-- `5` = Red Flag
-- `6` = Virtual Safety Car deployed
-- `7` = Virtual Safety Car ending
-- Any unexpected code (e.g., `3`) is treated as **green** but must emit a warning:
-  - `warning: unknown track status code {code}; treated as green`
+## 5. Filtering rules
 
-### 5.2 Excluded lap categories (used for pace + degradation)
-A lap is **excluded** if any of the following is true:
-1. **In-lap** (lap with pit entry)
-2. **Out-lap** (lap with pit exit)
-3. **SC/VSC lap**: TrackStatus in `{4,6,7}`
-4. **Red flag lap**: TrackStatus == `5`, plus boundary exclusion rule (below)
-5. **Missing/invalid lap time**: `lap_time` missing/NaN/invalid
+### 5.1 Baseline validity
+A lap is invalid for analytical plotting if:
+- `lap_time` is missing
+- `lap_time` is non-numeric after conversion
+- lap record is otherwise corrupted or incomplete for required plot inputs
 
-Clean lap = lap not excluded by any category above.
+### 5.2 Pit-lap removal
+For lap-time trend plots and per-lap delta plots:
+- remove laps where the driver has:
+  - pit entry lap
+  - pit exit lap
+- if either driver pitted on a lap, that lap must be excluded from the direct per-lap delta plot
 
-### 5.3 Red flag boundary exclusion rule (pace/degradation only)
-Exclude from pace/degradation:
-- All laps where `TrackStatus == 5`
-- The **last lap immediately before** the status changed to `5` (the lap directly preceding the first `5` in that red-flag segment)
-- The **first lap immediately after** the status returns to `1`
+### 5.3 SC/VSC removal
+User must be able to toggle exclusion of SC/VSC laps.
+- Default behavior: include SC/VSC laps unless user ticks exclusion box
+- If excluded:
+  - exclude laps whose TrackStatus corresponds to SC or VSC conditions
+- This toggle must affect:
+  - lap time trend plots
+  - polynomial fitting
+  - per-lap delta plot
+- The toggle state must be recorded in `methods`
 
-Additionally:
-- Use all lap times (including excluded) for reconciliation calculations (comparison residual), except where lap_time is missing.
+### 5.4 Stints and compounds
+- Do not reconstruct stints manually
+- Use FastF1-provided lap fields directly for stint and compound visualization
+- If a stint field is missing for a lap, the lap remains usable unless that missing value blocks the requested visualization
+- Missing stint/compound information must trigger a warning in the UI/debug panel
 
-### 5.4 Telemetry gap definition and drop rule
-- Telemetry gap = a lap row with **missing/invalid `lap_time`**
-- If telemetry gaps exceed **10%** of a driver’s total laps, drop that driver from analysis and log warning:
-  - `warning: telemetry gaps exceed 10% for driver {driver}; dropping from analysis`
+## 6. Driver comparison plots
 
-## 6. Pit stop detection policy
-### 6.1 Detection source
-- Use FastF1 pit markers: `PitInTime` and `PitOutTime`.
+## 6.1 Shared cumulative delta plot
+For the selected race and selected drivers:
+- plot cumulative delta in seconds between the two drivers on one graph
+- x-axis: lap number
+- y-axis: cumulative delta in seconds
+- sign convention must be explicit in `methods`
 
-### 6.2 In-lap/out-lap derivation when markers are missing
-- If in-lap marker missing but out-lap exists: set `pit_in_lap = pit_out_lap - 1` and log warning.
-- If out-lap marker missing but in-lap exists:
-  - If no lap_time recorded after `pit_in_lap`, consider possible DNF in pit and warn:
-    - `warning: possible DNF after in-pit at lap {pit_in_lap}`
-  - If lap_time exists for lap > `pit_in_lap + 2`, assume `pit_out_lap = pit_in_lap + 1` and warn:
-    - `warning: missing out-lap; assuming pit_out_lap={pit_in_lap+1} based on subsequent lap times`
+Definition:
+- `cum_delta_s = cumulative_sum(lap_time_a_s) - cumulative_sum(lap_time_b_s)`
 
-### 6.3 2-lap pit windows
-- Accept 2-lap windows as valid but emit warning.
+Handling:
+- allow plotting only on laps where both drivers have valid lap times
+- if one driver retires, plot only until common valid lap horizon
 
-### 6.4 Drive-through and time penalties
-- Drive-through penalties: **excluded from pit loss** computations (no service allowed).
-- Time penalties:
-  - If served at a pit stop **before** the last stint: include as pit loss.
-  - If given/served during the **last stint**: exclude from pit loss.
+## 6.2 Lap time trend plots with polynomial fit
+Show one subplot per driver, side by side.
 
-## 7. Stint segmentation policy
-### 7.1 Stint boundaries (MVP)
-- Each pit stop defines a new stint.
-- Compound change without pit defines a new stint.
-- Red flag boundary:
-  - Split into a new stint only if tyres were changed (see §7.2 tyre-change detection).
+Requirements:
+- x-axis: lap number
+- y-axis: lap time in seconds
+- show scatter points for laps
+- show polynomial fit curve
+- polynomial degree must be user selectable
+- compounds must be visually encoded
+- stints must be visually indicated
+- pit laps must be removed
+- optional SC/VSC removal via checkbox
+- fit must use only filtered valid laps
 
-### 7.2 Tyre-change detection across red flag boundary
-A stint is **continuous** across a red flag boundary iff the following holds:
+The plot must support the visual style of:
+- raw lap-time scatter
+- smooth fitted trend
+- compound encoding
+- stint context
 
-#### Primary (TyreLife continuity)
-Let:
-- `(L_pre, T_pre)` = lap number and tyre life of the last valid lap before the red flag
-- `(L_post, T_post)` = lap number and tyre life of the first valid lap after the restart
+## 6.3 Per-lap delta plot
+Plot lap-by-lap delta between selected drivers.
 
-Condition for continuity:
-- `T_post - T_pre == L_post - L_pre`
+Requirements:
+- one shared graph
+- x-axis: lap number
+- y-axis: lap delta in seconds
+- exclude laps where either driver pitted
+- respect optional SC/VSC exclusion
+- only compute on laps where both drivers have valid comparable data
 
-If `T_post < T_pre`, force **new stint** (tyre reset), even if compound is unchanged and no pit stop is recorded.
+## 7. Track layout comparison
 
-#### Fallback when TyreLife missing (NaNs)
-If TyreLife missing for either pre or post lap, apply:
-1. If compound changed ⇒ **new stint**
-2. If a pit/tire-change event detected during red flag interval ⇒ **new stint**
-3. Else (same compound + no pit event) ⇒ **continuous**, but warn:
-   - `warning: TyreLife missing across red flag; assuming continuous tyres for driver {driver}`
+## 7.1 Track layout
+Plot the track layout for the selected race using FastF1 telemetry/position data.
 
-## 8. Metric definitions (fixed for MVP)
-### 8.1 Pit loss per stop (fixed method)
-For each stop:
-- `W_pre`: up to 3 **clean** laps immediately before `pit_in_lap` (excluding in-lap)
-- `W_post`: up to 3 **clean** laps immediately after `pit_out_lap` (excluding out-lap)
-- `baseline = median(W_pre ∪ W_post)`; require `n_total_used >= 3`
-- `pit_loss_s = (inlap_time_s - baseline) + (outlap_time_s - baseline)`
+## 7.2 Selected-lap sector/segment comparison
+For the two selected drivers:
+- user selects one lap for driver A
+- user selects one lap for driver B
+- compare the two laps along the track
 
-Rules:
-- If stop at first lap or last lap so baseline cannot be computed from **both** sides ⇒ not computable + warning.
-- If in-lap or out-lap missing/invalid ⇒ not computable + warning.
-- SC/VSC-affected stops:
-  - included in aggregates **by default**
-  - user toggle allowed to exclude; toggle is reflected in `methods`
+Requirements:
+- color track segments according to which driver is faster
+- use one color per driver
+- comparison basis may be segment time or local speed-derived advantage after distance alignment
+- method must be deterministic and recorded in `methods`
 
-Required per-stop outputs:
-- `baseline_s`, `inlap_time_s`, `outlap_time_s`, `pit_loss_s`
-- `n_pre`, `n_post`, `n_total_used`
-- `is_sc_vsc_affected` (bool)
-- `is_computable` (bool) + `reason_not_computable` (nullable)
+Notes:
+- if official sector boundaries are not sufficient for localized comparison, use distance-segment comparison
+- if sector-only comparison is implemented first, structure the code so finer segmentation can replace it later without breaking the UI
 
-### 8.2 Stint pace and degradation
-- Pace: median of clean lap times in the stint.
-- Degradation (1): linear regression slope (s/lap) over clean laps.
-- Degradation (2): delta-first-last over clean laps.
+## 8. Telemetry comparison plot
 
-Threshold:
-- Minimum clean laps for pace/degradation: **>= 3**, else metric is null with reason.
+For the two selected drivers:
+- user selects one lap for each driver
+- compare telemetry along track distance
 
-## 9. Driver comparison and delta decomposition
-### 9.1 Common lap cutoff and DNF handling
-- Let `L_common = min(completed_laps_A, completed_laps_B)`.
-- If `L_common < 1`, block comparison:
-  - `driver with less than one lap, no comparison possible`
-- Comparisons are computed up to `L_common` even if one driver DNFs.
+Required stacked subplots:
+1. throttle vs distance
+2. brake vs distance
+3. speed vs distance
 
-### 9.2 Overlap windows (alignment)
-- Alignment unit: **per stint pair**
-- Overlap window: intersection by lap number
-- Inclusion rule: include only if `min(n_clean_overlap_A, n_clean_overlap_B) >= 3`
-- Non-overlap contribution: **0**, with explicit note
+Requirements:
+- common x-axis: distance
+- mark corners/turn numbers on x-axis when available
+- align telemetry by distance, not timestamp
+- handle different sampling densities robustly
+- interpolation/resampling method must be recorded in `methods`
 
-### 9.3 Observed delta and decomposition
-- `observed_finish_delta_s = sum(lap_time_A[1..L_common]) - sum(lap_time_B[1..L_common])`
-- `pit_delta_sum_s = Σ pit_loss_A - Σ pit_loss_B` (using computable pit losses; SC/VSC included by default unless toggle excludes)
-- For each included window:
-  - `pace_A(window)` = median clean lap time for A within window
-  - `pace_B(window)` = median clean lap time for B within window
-  - `window_delta_s = (pace_A - pace_B) * n_laps(window)`
-- `stint_delta_sum_s = Σ window_delta_s`
-- `residual_s = observed_finish_delta_s - (pit_delta_sum_s + stint_delta_sum_s)`
+## 9. Streamlit UI (single page with tabs, MVP)
 
-Residual rule:
-- Residual threshold: **10.0 s**
-- If `abs(residual_s) > 10.0`, flag “unreconciled” and list causes in warnings.
+Minimum tabs:
+1. Session loader
+   - season
+   - round
+   - load session
+   - session metadata
 
-## 10. Streamlit UI (single page with tabs, MVP)
-Tabs (minimum):
-1. Session loader (season/round, load)
-2. Driver selector (exactly two drivers)
-3. Stints + pits tables
-4. Comparison summary table
-5. Plots (Plotly): gap/delta over laps, pit loss bars, stint pace per stint
-6. Methods page (render `methods` table + definitions)
-7. Debug panels toggle: when enabled, show intermediate tables (`laps`, clean/excluded annotations, windows)
+2. Driver selection
+   - exactly two drivers
 
-## 11. Exports (MVP)
-### 11.1 CSV export
-- Scope: **selected drivers only**
-- Include:
-  - raw `laps`
-  - derived `stints`, `pits`, `comparison_windows`, `comparison_summary`, `methods`, `exports`
-- Naming:
-  - `season-round-race-driverA-driverB-timestamp.csv`
+3. Race delta
+   - cumulative delta plot
+   - per-lap delta plot
+   - filtering controls
 
-### 11.2 PDF export (single page)
-- Include **derived tables only** (no raw laps)
-- Naming:
-  - `season-round-race-driverA-driverB-timestamp.pdf`
+4. Lap time trends
+   - side-by-side lap time plots
+   - polynomial degree selector
+   - SC/VSC exclusion checkbox
 
-## 12. Logging
-- Persist a JSON run log per analysis run: `./run_logs/<run_id>.json`
-- Must include inputs, warnings, method parameters, driver selection, timestamps, file paths.
+5. Track comparison
+   - track layout
+   - selected lap per driver
+   - faster-driver segment map
 
-## 13. Tests (local pytest only)
-### 13.1 Fixtures (pinned sessions)
-Use 2025 Race sessions:
-- Round 10: Spain
-- Round 11: Austria
-- Round 12: Britain
+6. Telemetry comparison
+   - lap selector per driver
+   - throttle/brake/speed stacked plots
 
-### 13.2 Baseline expectations (stored in JSON under `tests/fixtures/`)
-Fixture,Driver,Expected Pit Count,Expected Stint Count,Residual Bound
-- Rd10 Spain, VER, 2, 3, < 5.0s
-- Rd10 Spain, NOR, 2, 3, < 5.0s
-- Rd11 Austria, VER, 3, 4, < 8.0s
-- Rd11 Austria, NOR, 2, 3, < 5.0s
-- Rd12 Britain, VER, 2, 3, < 12.0s
-- Rd12 Britain, NOR, 3, 4, < 12.0s
+7. Methods + debug
+   - rendered `methods`
+   - intermediate tables
+   - filtering diagnostics
+   - warnings
 
-### 13.3 Test assertions
-For each fixture (driver pair VER vs NOR):
-- pit count matches expected exactly for each driver
-- stint count matches expected exactly for each driver
-- `abs(residual_s) < bound` where fixture bound for a driver pair is the **maximum** residual bound listed for the two drivers in that fixture row set.
-- core invariants:
-  - stints cover all completed laps with 0 overlap per driver
-  - `n_clean + n_excluded = n_total` per stint
+## 10. Exports (MVP)
+
+### 10.1 CSV export
+Include:
+- `laps`
+- `laps_filtered`
+- `delta_laps`
+- `telemetry_compare` when available
+- `methods`
+- `exports`
+
+Naming:
+- `season-round-race-driverA-driverB-timestamp.csv`
+
+### 10.2 PDF export
+Single-page summary including:
+- cumulative delta plot
+- lap time trend plots
+- per-lap delta plot
+- telemetry comparison snapshot or track comparison snapshot
+- methods summary
+
+Naming:
+- `season-round-race-driverA-driverB-timestamp.pdf`
+
+## 11. Logging
+Persist JSON run log per analysis run in:
+- `./run_logs/<run_id>.json`
+
+Must include:
+- inputs
+- selected session
+- selected drivers
+- lap selections for telemetry comparison
+- toggle states
+- polynomial degree
+- warnings
+- export file paths
+- timestamps
+
+## 12. Tests (local pytest only)
+
+### 12.1 Testing philosophy
+This MVP is primarily a visual analysis tool.
+Tests are intended to validate:
+- correctness of canonical data preparation
+- correctness of filtering and alignment
+- robustness of plot-input generation
+- resilience to missing or partial FastF1 fields
+- export and logging behavior
+
+Tests are not intended to validate racing conclusions or visual interpretation quality.
+
+### 12.2 Fixtures
+Use pinned Race sessions where feasible, or mocked/stubbed FastF1 responses for unit tests.
+
+Recommended real-session fixtures:
+- 2025 Spain
+- 2025 Austria
+- 2025 Britain
+
+Unit tests must not rely on live network calls.
+
+### 12.3 Required test categories
+
+#### A. Canonical schema tests
+Verify:
+- `laps` is non-empty for valid driver/session inputs
+- required `laps` columns exist
+- `laps_filtered` contains inclusion flags and reasons
+- `delta_laps` contains required alignment fields
+- `telemetry_compare` contains required distance-aligned fields when telemetry is available
+
+#### B. Pit and filtering tests
+Verify:
+- `is_pit_in_lap`, `is_pit_out_lap`, and `is_pit_lap` are populated consistently
+- lap trend inputs exclude pit laps
+- per-lap delta excludes laps where either driver pitted
+- SC/VSC exclusion toggle changes inclusion behavior correctly
+- missing lap times are marked invalid and excluded where required
+
+#### C. Delta and alignment tests
+Verify:
+- cumulative delta uses the documented sign convention
+- per-lap delta is computed only when both drivers have comparable filtered laps
+- comparison stops at the last common valid comparable lap horizon
+- unmatched laps are excluded with reason where applicable
+
+#### D. Polynomial fit tests
+Verify:
+- fit uses only filtered valid laps
+- fit fails gracefully when data is insufficient for the selected degree
+- fit output is generated for valid inputs
+- degree selection is validated
+
+#### E. Telemetry tests
+Verify:
+- telemetry alignment is distance-based
+- telemetry comparison output is non-empty for valid lap selections
+- different telemetry sampling densities are handled correctly
+- missing corner metadata does not crash telemetry plotting inputs
+
+#### F. Plot robustness tests
+Verify:
+- plot builders run successfully on valid prepared inputs
+- plot builders return a fallback state or warning on empty/invalid input
+- plot builders do not perform hidden recomputation of canonical tables
+
+#### G. Export and logging tests
+Verify:
+- CSV export is created successfully
+- PDF export is created successfully
+- JSON run log is created successfully
+- export metadata includes session, drivers, settings, and file paths
+
+### 12.4 Minimum acceptance rule
+A milestone is not complete unless:
+- relevant unit tests for the milestone exist
+- all tests pass
+- `mypy src` passes
