@@ -235,7 +235,7 @@ Implement tabs:
 - side-by-side lap time plots
 - controls:
   - polynomial degree selector
-  - SC/VSC exclusion checkbox
+  - use the shared SC/VSC analysis control from the Delta tab
 
 ### Tab 5 — Track compare
 - lap selector for driver A

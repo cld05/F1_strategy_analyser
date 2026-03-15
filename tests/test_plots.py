@@ -73,6 +73,10 @@ def test_build_track_compare_figure_renders_segment_lines() -> None:
             "plot_y": [0.0, 0.5, 1.0],
             "sector_number": pd.Series([1, 2, 3], dtype="Int64"),
             "faster_driver_segment": pd.Series(["VER", "NOR", pd.NA], dtype="string"),
+            "slower_driver_segment": pd.Series(["NOR", "VER", pd.NA], dtype="string"),
+            "sector_time_driver_a_s": [25.0, 30.0, 26.0],
+            "sector_time_driver_b_s": [26.0, 29.0, 26.0],
+            "sector_delta_s": [1.0, 1.0, 0.0],
         }
     )
 
@@ -97,10 +101,13 @@ def test_build_telemetry_compare_figure_renders_three_stacked_panels() -> None:
         }
     )
 
-    figure = build_telemetry_compare_figure(telemetry_compare_rows)
+    corner_markers = pd.DataFrame({"corner_label": ["1", "2"], "distance_m": [5.0, 15.0]})
+    figure = build_telemetry_compare_figure(telemetry_compare_rows, corner_markers=corner_markers)
 
     assert len(figure.data) == 6
     assert figure.layout.title.text == "Telemetry Comparison (VER vs NOR)"
     assert figure.layout.yaxis.title.text == "Throttle"
     assert figure.layout.yaxis2.title.text == "Brake"
     assert figure.layout.yaxis3.title.text == "Speed"
+    assert figure.data[0].line.color == figure.data[2].line.color == figure.data[4].line.color
+    assert figure.data[1].line.color == figure.data[3].line.color == figure.data[5].line.color

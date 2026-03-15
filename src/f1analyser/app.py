@@ -23,6 +23,7 @@ from f1analyser.session_loader import (
 )
 from f1analyser.telemetry import (
     TrackCompareError,
+    build_corner_markers,
     build_telemetry_compare_rows,
     build_track_compare_rows,
 )
@@ -375,13 +376,19 @@ def main() -> None:
                     lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
                     lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
                     telemetry_compare_rows, telemetry_diagnostics = build_telemetry_compare_rows(lap_a, lap_b)
+                    corner_markers, corner_warnings = build_corner_markers(loaded_session)
                 except TrackCompareError as exc:
                     st.error(str(exc))
                 else:
                     st.session_state["telemetry_compare"] = telemetry_compare_rows
                     for warning in telemetry_diagnostics.warnings:
                         st.warning(warning)
-                    figure = build_telemetry_compare_figure(telemetry_compare_rows)
+                    for warning in corner_warnings:
+                        st.warning(warning)
+                    figure = build_telemetry_compare_figure(
+                        telemetry_compare_rows,
+                        corner_markers=corner_markers,
+                    )
                     st.plotly_chart(figure, use_container_width=True)
                     st.dataframe(telemetry_compare_rows, use_container_width=True)
 

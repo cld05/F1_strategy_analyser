@@ -34,6 +34,46 @@ def _driver_value(lap: Any) -> str:
     return str(value)
 
 
+def build_corner_markers(session: Any) -> tuple[pd.DataFrame | None, list[str]]:
+    warnings: list[str] = []
+    get_circuit_info = getattr(session, "get_circuit_info", None)
+    if get_circuit_info is None:
+        warnings.append("Official corner metadata unavailable; telemetry plot omits corner markers.")
+        return None, warnings
+
+    circuit_info = get_circuit_info()
+    corners = getattr(circuit_info, "corners", None)
+    if corners is None or len(corners) == 0:
+        warnings.append("Official corner metadata unavailable; telemetry plot omits corner markers.")
+        return None, warnings
+
+    required_columns = {"Number", "Distance"}
+    missing = required_columns.difference(corners.columns)
+    if missing:
+        warnings.append("Official corner metadata is incomplete; telemetry plot omits corner markers.")
+        return None, warnings
+
+    corner_rows = corners.loc[:, [column for column in ["Number", "Letter", "Distance"] if column in corners.columns]].copy()
+    corner_rows = corner_rows.dropna(subset=["Number", "Distance"])
+    if corner_rows.empty:
+        warnings.append("Official corner metadata is incomplete; telemetry plot omits corner markers.")
+        return None, warnings
+
+    if "Letter" not in corner_rows.columns:
+        corner_rows["Letter"] = ""
+
+    corner_rows["corner_label"] = corner_rows.apply(
+        lambda row: f"{int(row['Number'])}{str(row['Letter']).strip()}".strip(),
+        axis=1,
+    )
+    return (
+        corner_rows.loc[:, ["corner_label", "Distance"]]
+        .rename(columns={"Distance": "distance_m"})
+        .reset_index(drop=True),
+        warnings,
+    )
+
+
 def _lap_telemetry(lap: Any) -> pd.DataFrame:
     telemetry = lap.get_telemetry()
     required_columns = {"Distance", "X", "Y"}
@@ -79,6 +119,16 @@ def _interpolate_series(distances: np.ndarray, telemetry: pd.DataFrame, column: 
     source_distance = telemetry["Distance"].to_numpy(dtype="float64")
     source_values = telemetry[column].to_numpy(dtype="float64")
     return np.asarray(np.interp(distances, source_distance, source_values), dtype="float64")
+
+
+def _slower_driver_for_sector(winner: object, driver_a: str, driver_b: str) -> object:
+    if pd.isna(winner):
+        return pd.NA
+    if winner == driver_a:
+        return driver_b
+    if winner == driver_b:
+        return driver_a
+    return pd.NA
 
 
 def build_track_compare_rows(
@@ -160,6 +210,16 @@ def build_track_compare_rows(
             "plot_y": (y_a + y_b) / 2.0,
             "sector_number": pd.Series(sector_numbers, dtype="Int64"),
             "faster_driver_segment": faster_driver,
+            "sector_time_driver_a_s": pd.Series([float(sector_times_a[sector - 1]) for sector in sector_numbers], dtype="float64"),
+            "sector_time_driver_b_s": pd.Series([float(sector_times_b[sector - 1]) for sector in sector_numbers], dtype="float64"),
+            "sector_delta_s": pd.Series(
+                [abs(float(sector_times_a[sector - 1]) - float(sector_times_b[sector - 1])) for sector in sector_numbers],
+                dtype="float64",
+            ),
+            "slower_driver_segment": pd.Series(
+                [_slower_driver_for_sector(sector_winners[sector - 1], driver_a, driver_b) for sector in sector_numbers],
+                dtype="string",
+            ),
         }
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from f1analyser.telemetry import build_telemetry_compare_rows, build_track_compare_rows
+from f1analyser.telemetry import build_corner_markers, build_telemetry_compare_rows, build_track_compare_rows
 
 
 class DummyLap:
@@ -53,6 +53,9 @@ def test_build_track_compare_rows_resamples_to_shared_distance_grid() -> None:
     assert compare_rows["driver_a"].tolist() == ["VER"] * 4
     assert compare_rows["driver_b"].tolist() == ["NOR"] * 4
     assert compare_rows["sector_number"].tolist() == [1, 2, 3, 3]
+    assert compare_rows["sector_time_driver_a_s"].iloc[0] == 25.0
+    assert compare_rows["sector_time_driver_b_s"].iloc[0] == 24.0
+    assert compare_rows["sector_delta_s"].iloc[0] == 1.0
     assert diagnostics.warnings == []
 
 
@@ -139,3 +142,23 @@ def test_build_telemetry_compare_rows_aligns_distance_and_merges_channels() -> N
     ]
     assert compare_rows["delta_speed"].iloc[0] == 2.0
     assert diagnostics.warnings == []
+
+
+def test_build_corner_markers_uses_available_official_corner_metadata() -> None:
+    corners = pd.DataFrame(
+        {
+            "Number": [1, 2],
+            "Letter": ["", "A"],
+            "Distance": [120.0, 340.0],
+        }
+    )
+
+    class DummySession:
+        def get_circuit_info(self) -> object:
+            return type("CircuitInfo", (), {"corners": corners})()
+
+    markers, warnings = build_corner_markers(DummySession())
+
+    assert warnings == []
+    assert markers is not None
+    assert markers["corner_label"].tolist() == ["1", "2A"]

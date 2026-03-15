@@ -211,7 +211,7 @@ Requirements:
 - compounds must be visually encoded
 - stints must be visually indicated
 - pit laps must be removed
-- optional SC/VSC removal via checkbox
+- optional SC/VSC removal via the shared Race Delta analysis control
 - fit must use only filtered valid laps within each stint
 - include concise stint-level fit insights
 

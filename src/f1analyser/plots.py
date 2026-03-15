@@ -23,6 +23,7 @@ STINT_SYMBOLS: list[str] = [
     "cross",
 ]
 FIT_COLORS: list[str] = ["#1d3557", "#457b9d", "#2a9d8f", "#6d597a", "#e76f51"]
+DRIVER_TRACE_COLORS: tuple[str, str] = ("#d62828", "#1d3557")
 
 
 def _compound_color(compound: str) -> str:
@@ -195,8 +196,8 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
     driver_a = str(track_compare_rows.iloc[0]["driver_a"])
     driver_b = str(track_compare_rows.iloc[0]["driver_b"])
     color_map = {
-        driver_a: "#d62828",
-        driver_b: "#1d3557",
+        driver_a: DRIVER_TRACE_COLORS[0],
+        driver_b: DRIVER_TRACE_COLORS[1],
         pd.NA: "#6c757d",
         "": "#6c757d",
     }
@@ -215,9 +216,22 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
                 line={"color": color, "width": 5},
                 name=f"Sector {sector_number}",
                 showlegend=False,
+                customdata=sector_rows[
+                    [
+                        "sector_time_driver_a_s",
+                        "sector_time_driver_b_s",
+                        "sector_delta_s",
+                        "faster_driver_segment",
+                        "slower_driver_segment",
+                    ]
+                ],
                 hovertemplate=(
                     f"Sector {sector_number}<br>"
-                    f"Faster: {faster_driver if pd.notna(faster_driver) else 'Tie'}<extra></extra>"
+                    f"{driver_a}: %{{customdata[0]:.3f}}s<br>"
+                    f"{driver_b}: %{{customdata[1]:.3f}}s<br>"
+                    "Loss to slower driver: %{customdata[2]:.3f}s<br>"
+                    "Faster: %{customdata[3]}<br>"
+                    "Slower: %{customdata[4]}<extra></extra>"
                 ),
             )
         )
@@ -245,7 +259,11 @@ def build_track_compare_figure(track_compare_rows: pd.DataFrame) -> go.Figure:
     return figure
 
 
-def build_telemetry_compare_figure(telemetry_compare_rows: pd.DataFrame) -> go.Figure:
+def build_telemetry_compare_figure(
+    telemetry_compare_rows: pd.DataFrame,
+    *,
+    corner_markers: pd.DataFrame | None = None,
+) -> go.Figure:
     driver_a = str(telemetry_compare_rows.iloc[0]["driver_a"])
     driver_b = str(telemetry_compare_rows.iloc[0]["driver_b"])
     figure = make_subplots(
@@ -268,6 +286,7 @@ def build_telemetry_compare_figure(telemetry_compare_rows: pd.DataFrame) -> go.F
                 y=telemetry_compare_rows[column_a],
                 mode="lines",
                 name=driver_a,
+                line={"color": DRIVER_TRACE_COLORS[0]},
                 showlegend=row_index == 1,
             ),
             row=row_index,
@@ -279,12 +298,24 @@ def build_telemetry_compare_figure(telemetry_compare_rows: pd.DataFrame) -> go.F
                 y=telemetry_compare_rows[column_b],
                 mode="lines",
                 name=driver_b,
+                line={"color": DRIVER_TRACE_COLORS[1]},
                 showlegend=row_index == 1,
             ),
             row=row_index,
             col=1,
         )
         figure.update_yaxes(title_text=y_axis_title, row=row_index, col=1)
+
+    if corner_markers is not None and not corner_markers.empty:
+        for row in corner_markers.itertuples(index=False):
+            figure.add_vline(
+                x=float(row.distance_m),
+                line_width=1,
+                line_dash="dot",
+                line_color="#6c757d",
+                annotation_text=str(row.corner_label),
+                annotation_position="top",
+            )
 
     figure.update_xaxes(title_text="Distance (m)", row=3, col=1)
     figure.update_layout(
