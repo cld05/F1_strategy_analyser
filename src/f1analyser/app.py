@@ -280,6 +280,14 @@ def _available_driver_lap_numbers(canonical_laps: object, driver: str) -> list[i
     return sorted(dict.fromkeys(int(lap) for lap in lap_numbers))
 
 
+def _default_lap_index(lap_options: list[int]) -> int:
+    if not lap_options:
+        return 0
+    if 2 in lap_options:
+        return lap_options.index(2)
+    return 0
+
+
 def _select_session_lap(session: object, driver: str, lap_number: int) -> object:
     session_laps = getattr(session, "laps", None)
     if session_laps is None:
@@ -442,8 +450,23 @@ def main() -> None:
             if not lap_options_a or not lap_options_b:
                 st.info("No lap numbers are available for one or both selected drivers.")
             else:
-                selected_lap_a = st.selectbox(f"Lap for {driver_a}", options=lap_options_a, key="track_lap_a")
-                selected_lap_b = st.selectbox(f"Lap for {driver_b}", options=lap_options_b, key="track_lap_b")
+                selected_lap_a = st.selectbox(
+                    f"Lap for {driver_a}",
+                    options=lap_options_a,
+                    index=_default_lap_index(lap_options_a),
+                    key="track_lap_a",
+                )
+                selected_lap_b = st.selectbox(
+                    f"Lap for {driver_b}",
+                    options=lap_options_b,
+                    index=_default_lap_index(lap_options_b),
+                    key="track_lap_b",
+                )
+                st.caption(
+                    "Lap 1 is usually not a good comparison lap because the race start, launch phase, "
+                    "opening-corner traffic, and position changes distort the pace profile. Lap 2 is "
+                    "typically a cleaner baseline when available."
+                )
                 try:
                     lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
                     lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
