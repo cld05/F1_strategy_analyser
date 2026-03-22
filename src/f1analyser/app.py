@@ -30,10 +30,72 @@ from f1analyser.telemetry import (
 
 
 TRACK_COMPARISON_LIMITATIONS = """
-Remaining limitations
-
+Remaining limitations  
 Corner markers depend on FastF1 circuit metadata availability. When missing or incomplete, the telemetry plot renders without corner markers and shows a warning.
 Track Comparison still projects the three official sectors onto the sampled telemetry path using sector-time-derived boundaries. It does not use a circuit-native sector geometry map.
+""".strip()
+
+LAP_TRENDS_EXPLANATION = """
+**What these graphs show**  
+These charts show lap time evolution across the race for the two selected drivers. Each point is one filtered lap, plotted as lap number versus lap time. The data is split by stint, so the graphs let you compare how pace changed within each tyre run rather than across the full race as one continuous series.
+
+**How the trends are calculated**  
+Only laps that pass the current filtering rules are used. That means pit laps are excluded, and SC/VSC laps may also be excluded depending on the active setting. For each driver and each stint separately, the app fits a polynomial curve to the remaining lap times using `lap number -> lap time` as the relationship. The fitted line is a smoothing curve, not a raw measurement. It is used to highlight the general direction of pace change within that stint.
+
+**What is useful to look at**  
+Relevant signals are:
+- whether a stint looks stable, improving, or degrading over time
+- whether one driver’s lap times rise faster than the other’s within comparable stints
+- whether performance drops sharply near the end of a stint
+- whether the raw laps broadly follow the fitted curve or show a lot of scatter
+
+In practical terms, these plots are useful for identifying pace consistency, tyre-run deterioration, and differences in stint shape between the two drivers.
+
+**What cannot be concluded from these graphs**  
+These graphs do not prove causation. They do not by themselves tell you why lap times changed. They also do not isolate the effect of tyre compound, fuel load, traffic, battery usage, lift-and-coast, setup differences, or race management decisions. The fitted curve is only a mathematical smoothing of filtered lap times, so it should not be interpreted as a physical tyre model or as a precise degradation law. Higher-degree fits can also exaggerate curvature, especially when a stint has few usable laps.
+
+**Main limitations** 
+- Trends are fitted per stint, not as a full-race model.
+- Results depend on the current filtering choices.
+- Sparse stints may not have enough laps for a reliable fit.
+- The fit summarizes shape, but the raw lap points remain the primary evidence.
+""".strip()
+
+LAP_TRENDS_DEGREE_RECOMMENDATION = """
+**Recommended fit degree**  
+Recommended fit degree: start with degree 2. Use degree 1 for short or noisy stints, and degree 3 only when a stint has many clean laps and visible curvature. Higher degrees can overfit and should be interpreted cautiously. If the fitted curve looks more complex than the raw lap pattern, the selected degree is likely too high.
+
+NB: Guidance:
+- if the fitted line swings more than the raw points suggest, the degree is probably too high
+- if different degrees tell very different stories, trust the raw laps more than the fit
+- shorter stints should use lower degrees
+- the fit is for summarizing shape, not proving a physical degradation model
+""".strip()
+
+RACE_DELTA_EXPLANATION = """
+**What these graphs show**  
+These charts compare the two selected drivers lap by lap across the race. The per-lap delta chart shows the time difference on each comparable lap. The cumulative delta chart shows how those lap-by-lap differences add up over the race. The sign convention is fixed as `driver A - driver B`, so negative values mean driver A was faster and positive values mean driver B was faster.
+
+**How the deltas are calculated**  
+The comparison is built by aligning both drivers by lap number. A lap is included in the plotted delta only when both drivers have a valid comparable lap time for that same lap number. If a lap is missing, invalid, or excluded by the current filtering rules, it remains documented in the underlying table but is not used in the plotted delta series. Per-lap delta is calculated as `lap_time_a - lap_time_b`. Cumulative delta is the running sum of those valid per-lap differences.
+
+**What is useful to look at**  
+Relevant signals are:
+- who gained time overall across the race
+- whether the advantage was steady or came in isolated laps
+- where the cumulative gap changed direction
+- whether the lap-by-lap differences are small and stable or large and irregular
+
+In practical terms, these charts help identify when one driver was consistently quicker, when the race balance shifted, and whether the final gap came from gradual accumulation or a few decisive laps.
+
+**What cannot be concluded from these graphs**  
+These charts do not explain why time was gained or lost. They do not isolate the effect of tyre choice, degradation, fuel load, traffic, battery deployment, lift-and-coast, setup differences, pit strategy, or race management decisions. They are descriptive timing comparisons only. They show where the time difference appeared, not the cause of it.
+
+**Main limitations**  
+- Only laps that are valid and comparable for both drivers are plotted.
+- Missing or excluded laps can affect how much of the race is actually represented in the charts.
+- The sign convention must be read carefully: the delta is always `driver A - driver B`.
+- The cumulative curve is a running total of valid lap differences, not a causal explanation of race outcome.
 """.strip()
 
 
@@ -292,11 +354,6 @@ def main() -> None:
 
     with tabs[2]:
         st.subheader("Delta plots")
-        exclude_sc_vsc = _shared_exclude_sc_vsc_checkbox(
-            label="Exclude SC/VSC laps from analysis",
-            widget_key="exclude_sc_vsc_race_delta",
-        )
-        st.caption(f"SC/VSC exclusion active: {exclude_sc_vsc}")
         if st.session_state.get("canonical_laps") is not None:
             _refresh_analysis_tables()
         delta_laps = st.session_state.get("delta_laps")
@@ -312,6 +369,7 @@ def main() -> None:
                 per_lap_figure = build_per_lap_delta_figure(delta_plot_rows)
                 st.plotly_chart(cumulative_figure, use_container_width=True)
                 st.plotly_chart(per_lap_figure, use_container_width=True)
+                st.markdown(RACE_DELTA_EXPLANATION)
             st.dataframe(delta_laps, use_container_width=True)
 
     with tabs[3]:
@@ -337,6 +395,7 @@ def main() -> None:
                     options=[1, 2, 3, 4, 5],
                     index=1,
                 )
+                st.caption(LAP_TRENDS_DEGREE_RECOMMENDATION)
                 st.session_state["polynomial_degree"] = int(polynomial_degree)
                 try:
                     plot_rows, fit_rows, stint_insights, diagnostics = build_lap_trend_inputs(
@@ -359,6 +418,7 @@ def main() -> None:
                         polynomial_degree=polynomial_degree,
                     )
                     st.plotly_chart(figure, use_container_width=True)
+                    st.markdown(LAP_TRENDS_EXPLANATION)
                     if not stint_insights.empty:
                         st.write("Stint fit insights")
                         st.dataframe(stint_insights, use_container_width=True)
