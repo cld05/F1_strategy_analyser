@@ -33,6 +33,19 @@ def available_seasons(start: int = _MIN_SEASON) -> list[int]:
     return list(range(start, current_season() + 1))
 
 
+def available_rounds(season: int) -> list[tuple[int, str]]:
+    fastf1_module = _get_fastf1_module()
+    try:
+        schedule = fastf1_module.get_event_schedule(season, include_testing=False)
+    except Exception as exc:
+        raise SessionLoadError(f"Failed to fetch event schedule for {season}.") from exc
+    return [
+        (int(row["RoundNumber"]), str(row["EventName"]))
+        for _, row in schedule.iterrows()
+        if int(row["RoundNumber"]) >= 1
+    ]
+
+
 def _get_fastf1_module() -> Any:
     try:
         return importlib.import_module("fastf1")

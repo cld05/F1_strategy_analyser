@@ -17,6 +17,7 @@ from f1analyser.plots import (
 )
 from f1analyser.session_loader import (
     SessionLoadError,
+    available_rounds,
     available_seasons,
     extract_session_metadata,
     load_race_session,
@@ -99,6 +100,11 @@ These charts do not explain why time was gained or lost. They do not isolate the
 """.strip()
 
 
+@st.cache_data
+def _cached_available_rounds(season: int) -> list[tuple[int, str]]:
+    return available_rounds(season)
+
+
 def _render_debug_tables() -> None:
     show_debug = st.checkbox("Show intermediate tables", value=False)
     if not show_debug:
@@ -129,19 +135,25 @@ def _render_session_tab() -> None:
         options=seasons,
         index=len(seasons) - 1,
     )
-    selected_round = st.number_input(
-        "Round",
-        min_value=1,
-        max_value=30,
-        value=1,
-        step=1,
-    )
+    season_int = int(selected_season)
+
+    try:
+        rounds = _cached_available_rounds(season_int)
+        round_labels = [f"{n} — {name}" for n, name in rounds]
+        round_numbers = [n for n, _ in rounds]
+        selected_round_label = st.selectbox("Round", options=round_labels)
+        selected_round = round_numbers[round_labels.index(selected_round_label)]
+    except SessionLoadError:
+        st.warning("Could not fetch round list for this season. Enter round number manually.")
+        selected_round = int(
+            st.number_input("Round", min_value=1, max_value=30, value=1, step=1)
+        )
 
     if st.button("Load race session", type="primary"):
         with st.spinner("Loading FastF1 race session..."):
             try:
                 session = load_race_session(
-                    season=int(selected_season),
+                    season=season_int,
                     round_number=int(selected_round),
                     timeout_seconds=120,
                     max_retries=2,
