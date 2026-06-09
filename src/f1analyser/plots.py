@@ -24,6 +24,10 @@ STINT_SYMBOLS: list[str] = [
 ]
 FIT_COLORS: list[str] = ["#1d3557", "#457b9d", "#2a9d8f", "#6d597a", "#e76f51"]
 DRIVER_TRACE_COLORS: tuple[str, str] = ("#d62828", "#1d3557")
+CHAMPIONSHIP_PALETTE: list[str] = [
+    "#e63946", "#457b9d", "#2a9d8f", "#e9c46a", "#f4a261",
+    "#6d597a", "#3a86ff", "#06d6a0", "#ffb703", "#8338ec",
+]
 
 
 def _compound_color(compound: str) -> str:
@@ -322,5 +326,93 @@ def build_telemetry_compare_figure(
         title=f"Telemetry Comparison ({driver_a} vs {driver_b})",
         margin={"l": 40, "r": 24, "t": 64, "b": 32},
         height=760,
+    )
+    return figure
+
+
+def build_driver_points_figure(df: pd.DataFrame) -> go.Figure:
+    """Cumulative driver championship points by round."""
+    figure = go.Figure()
+    drivers = list(df["Driver"].unique())
+    for i, driver in enumerate(drivers):
+        ddf = df[df["Driver"] == driver].sort_values("RoundNumber")
+        team_colors = ddf["TeamColor"].dropna().tolist()
+        raw_color = team_colors[0] if team_colors and str(team_colors[0]).strip() else ""
+        color_str = f"#{raw_color}" if raw_color and not str(raw_color).startswith("#") else raw_color
+        color = color_str if color_str else CHAMPIONSHIP_PALETTE[i % len(CHAMPIONSHIP_PALETTE)]
+        figure.add_trace(
+            go.Scatter(
+                x=ddf["EventName"],
+                y=ddf["CumulativePoints"],
+                mode="lines+markers",
+                name=driver,
+                line={"color": color, "width": 2},
+                marker={"size": 7},
+            )
+        )
+    figure.update_layout(
+        title="Driver Championship — Cumulative Points",
+        xaxis_title="Round",
+        yaxis_title="Points",
+        margin={"l": 40, "r": 24, "t": 64, "b": 80},
+        xaxis={"tickangle": -35},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+    )
+    return figure
+
+
+def build_team_points_figure(df: pd.DataFrame) -> go.Figure:
+    """Cumulative constructor championship points by round."""
+    figure = go.Figure()
+    teams = list(df["Team"].unique())
+    for i, team in enumerate(teams):
+        tdf = df[df["Team"] == team].sort_values("RoundNumber")
+        color = CHAMPIONSHIP_PALETTE[i % len(CHAMPIONSHIP_PALETTE)]
+        figure.add_trace(
+            go.Scatter(
+                x=tdf["EventName"],
+                y=tdf["CumulativePoints"],
+                mode="lines+markers",
+                name=team,
+                line={"color": color, "width": 2},
+                marker={"size": 7},
+            )
+        )
+    figure.update_layout(
+        title="Constructor Championship — Cumulative Points",
+        xaxis_title="Round",
+        yaxis_title="Points",
+        margin={"l": 40, "r": 24, "t": 64, "b": 80},
+        xaxis={"tickangle": -35},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+    )
+    return figure
+
+
+def build_driver_gap_figure(df: pd.DataFrame) -> go.Figure:
+    """Race finish gap in seconds relative to the fastest classified selected driver per round."""
+    figure = go.Figure()
+    drivers = list(df["Driver"].unique())
+    for i, driver in enumerate(drivers):
+        ddf = df[df["Driver"] == driver].sort_values("RoundNumber")
+        color = CHAMPIONSHIP_PALETTE[i % len(CHAMPIONSHIP_PALETTE)]
+        figure.add_trace(
+            go.Scatter(
+                x=ddf["EventName"],
+                y=ddf["GapSeconds"],
+                mode="lines+markers",
+                name=driver,
+                line={"color": color, "width": 2},
+                marker={"size": 7},
+                connectgaps=False,
+            )
+        )
+    figure.update_layout(
+        title="Race Finish Gap — seconds vs. fastest selected driver",
+        xaxis_title="Round",
+        yaxis_title="Gap (s)",
+        margin={"l": 40, "r": 24, "t": 64, "b": 80},
+        xaxis={"tickangle": -35},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
     )
     return figure

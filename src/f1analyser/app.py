@@ -15,6 +15,21 @@ from f1analyser.plots import (
     build_telemetry_compare_figure,
     build_track_compare_figure,
 )
+from f1analyser.championship import (
+    ChampionshipLoadError,
+    RoundResult,
+    available_drivers,
+    available_teams,
+    build_driver_cumulative_points,
+    build_driver_gap_table,
+    build_team_cumulative_points,
+    load_season_results,
+)
+from f1analyser.plots import (
+    build_driver_gap_figure,
+    build_driver_points_figure,
+    build_team_points_figure,
+)
 from f1analyser.session_loader import (
     SessionLoadError,
     available_rounds,
@@ -353,240 +368,332 @@ def main() -> None:
     st.set_page_config(page_title="F1 Post-Race Analyzer", layout="wide")
     st.title("F1 Post-Race Analyzer — MVP")
 
-    tabs = st.tabs(
-        [
-            "1) Session",
-            "2) Drivers",
-            "3) Race delta",
-            "4) Lap trends",
-            "5) Track comparison",
-            "6) Telemetry comparison",
-            "7) Methods",
-            "8) Debug",
-        ]
-    )
+    section_race, section_champ = st.tabs(["Race Analysis", "Championship Analysis"])
 
-    with tabs[0]:
-        _render_session_tab()
+    with section_champ:
+        _render_championship_section()
 
-    with tabs[1]:
-        _render_driver_tab()
+    with section_race:
+        tabs = st.tabs(
+            [
+                "1) Session",
+                "2) Drivers",
+                "3) Race delta",
+                "4) Lap trends",
+                "5) Track comparison",
+                "6) Telemetry comparison",
+                "7) Methods",
+                "8) Debug",
+            ]
+        )
 
-    with tabs[2]:
-        st.subheader("Delta plots")
-        if st.session_state.get("canonical_laps") is not None:
-            _refresh_analysis_tables()
-        delta_laps = st.session_state.get("delta_laps")
-        if delta_laps is None:
-            st.info("Build canonical laps to prepare delta plots.")
-        else:
-            try:
-                delta_plot_rows = build_delta_plot_rows(delta_laps)
-            except DeltaLapsError as exc:
-                st.error(str(exc))
-            if "delta_plot_rows" in locals():
-                cumulative_figure = build_cumulative_delta_figure(delta_plot_rows)
-                per_lap_figure = build_per_lap_delta_figure(delta_plot_rows)
-                st.plotly_chart(cumulative_figure, use_container_width=True)
-                st.plotly_chart(per_lap_figure, use_container_width=True)
-                st.markdown(RACE_DELTA_EXPLANATION)
-            st.dataframe(delta_laps, use_container_width=True)
+        with tabs[0]:
+            _render_session_tab()
 
-    with tabs[3]:
-        st.subheader("Lap time trends")
-        filtered_laps = st.session_state.get("laps_filtered")
-        selected_drivers = st.session_state.get("selected_drivers")
-        if filtered_laps is None or selected_drivers is None:
-            st.info("Build canonical laps to prepare lap trend plots.")
-        else:
-            exclude_sc_vsc = _shared_exclude_sc_vsc_checkbox(
-                label="Exclude SC/VSC laps from comparison and fitting",
-                widget_key="exclude_sc_vsc_lap_trends",
-            )
-            st.caption(f"SC/VSC exclusion active: {exclude_sc_vsc}")
+        with tabs[1]:
+            _render_driver_tab()
+
+        with tabs[2]:
+            st.subheader("Delta plots")
             if st.session_state.get("canonical_laps") is not None:
                 _refresh_analysis_tables()
+            delta_laps = st.session_state.get("delta_laps")
+            if delta_laps is None:
+                st.info("Build canonical laps to prepare delta plots.")
+            else:
+                try:
+                    delta_plot_rows = build_delta_plot_rows(delta_laps)
+                except DeltaLapsError as exc:
+                    st.error(str(exc))
+                if "delta_plot_rows" in locals():
+                    cumulative_figure = build_cumulative_delta_figure(delta_plot_rows)
+                    per_lap_figure = build_per_lap_delta_figure(delta_plot_rows)
+                    st.plotly_chart(cumulative_figure, use_container_width=True)
+                    st.plotly_chart(per_lap_figure, use_container_width=True)
+                    st.markdown(RACE_DELTA_EXPLANATION)
+                st.dataframe(delta_laps, use_container_width=True)
+
+        with tabs[3]:
+            st.subheader("Lap time trends")
             filtered_laps = st.session_state.get("laps_filtered")
-            if filtered_laps is None:
+            selected_drivers = st.session_state.get("selected_drivers")
+            if filtered_laps is None or selected_drivers is None:
                 st.info("Build canonical laps to prepare lap trend plots.")
             else:
-                polynomial_degree = st.selectbox(
-                    "Polynomial degree",
-                    options=[1, 2, 3, 4, 5],
-                    index=1,
+                exclude_sc_vsc = _shared_exclude_sc_vsc_checkbox(
+                    label="Exclude SC/VSC laps from comparison and fitting",
+                    widget_key="exclude_sc_vsc_lap_trends",
                 )
-                st.caption(LAP_TRENDS_DEGREE_RECOMMENDATION)
-                st.session_state["polynomial_degree"] = int(polynomial_degree)
-                try:
-                    plot_rows, fit_rows, stint_insights, diagnostics = build_lap_trend_inputs(
-                        filtered_laps,
-                        selected_drivers,
-                        polynomial_degree=polynomial_degree,
-                    )
-                except LapTrendError as exc:
-                    st.error(str(exc))
+                st.caption(f"SC/VSC exclusion active: {exclude_sc_vsc}")
+                if st.session_state.get("canonical_laps") is not None:
+                    _refresh_analysis_tables()
+                filtered_laps = st.session_state.get("laps_filtered")
+                if filtered_laps is None:
+                    st.info("Build canonical laps to prepare lap trend plots.")
                 else:
-                    st.session_state["lap_trend_plot_rows"] = plot_rows
-                    st.session_state["lap_trend_fit_rows"] = fit_rows
-                    st.session_state["lap_trend_stint_insights"] = stint_insights
-                    for warning in diagnostics.warnings:
-                        st.warning(warning)
-                    figure = build_lap_time_trend_figure(
-                        plot_rows,
-                        fit_rows,
-                        selected_drivers,
-                        polynomial_degree=polynomial_degree,
+                    polynomial_degree = st.selectbox(
+                        "Polynomial degree",
+                        options=[1, 2, 3, 4, 5],
+                        index=1,
                     )
-                    st.plotly_chart(figure, use_container_width=True)
-                    st.markdown(LAP_TRENDS_EXPLANATION)
-                    if not stint_insights.empty:
-                        st.write("Stint fit insights")
-                        st.dataframe(stint_insights, use_container_width=True)
+                    st.caption(LAP_TRENDS_DEGREE_RECOMMENDATION)
+                    st.session_state["polynomial_degree"] = int(polynomial_degree)
+                    try:
+                        plot_rows, fit_rows, stint_insights, diagnostics = build_lap_trend_inputs(
+                            filtered_laps,
+                            selected_drivers,
+                            polynomial_degree=polynomial_degree,
+                        )
+                    except LapTrendError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["lap_trend_plot_rows"] = plot_rows
+                        st.session_state["lap_trend_fit_rows"] = fit_rows
+                        st.session_state["lap_trend_stint_insights"] = stint_insights
+                        for warning in diagnostics.warnings:
+                            st.warning(warning)
+                        figure = build_lap_time_trend_figure(
+                            plot_rows,
+                            fit_rows,
+                            selected_drivers,
+                            polynomial_degree=polynomial_degree,
+                        )
+                        st.plotly_chart(figure, use_container_width=True)
+                        st.markdown(LAP_TRENDS_EXPLANATION)
+                        if not stint_insights.empty:
+                            st.write("Stint fit insights")
+                            st.dataframe(stint_insights, use_container_width=True)
 
-    with tabs[4]:
-        track_header, track_help = st.columns([0.94, 0.06])
-        with track_header:
-            st.subheader("Track comparison")
-        with track_help:
-            with st.popover("?"):
-                st.markdown(TRACK_COMPARISON_LIMITATIONS)
-        loaded_session = st.session_state.get("loaded_session")
-        canonical_laps = st.session_state.get("canonical_laps")
-        selected_drivers = st.session_state.get("selected_drivers")
-        if loaded_session is None or canonical_laps is None or selected_drivers is None:
-            st.info("Build canonical laps to prepare track comparison.")
-        else:
-            driver_a, driver_b = selected_drivers
-            lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
-            lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
-            if not lap_options_a or not lap_options_b:
-                st.info("No lap numbers are available for one or both selected drivers.")
+        with tabs[4]:
+            track_header, track_help = st.columns([0.94, 0.06])
+            with track_header:
+                st.subheader("Track comparison")
+            with track_help:
+                with st.popover("?"):
+                    st.markdown(TRACK_COMPARISON_LIMITATIONS)
+            loaded_session = st.session_state.get("loaded_session")
+            canonical_laps = st.session_state.get("canonical_laps")
+            selected_drivers = st.session_state.get("selected_drivers")
+            if loaded_session is None or canonical_laps is None or selected_drivers is None:
+                st.info("Build canonical laps to prepare track comparison.")
             else:
-                selected_lap_a = st.selectbox(
-                    f"Lap for {driver_a}",
-                    options=lap_options_a,
-                    index=_default_lap_index(lap_options_a),
-                    key="track_lap_a",
-                )
-                selected_lap_b = st.selectbox(
-                    f"Lap for {driver_b}",
-                    options=lap_options_b,
-                    index=_default_lap_index(lap_options_b),
-                    key="track_lap_b",
-                )
-                st.caption(
-                    "Lap 1 is usually not a good comparison lap because the race start, launch phase, "
-                    "opening-corner traffic, and position changes distort the pace profile. Lap 2 is "
-                    "typically a cleaner baseline when available."
-                )
-                try:
-                    lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
-                    lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
-                    track_compare_rows, track_diagnostics = build_track_compare_rows(lap_a, lap_b)
-                    corner_markers, _corner_warnings = build_corner_markers(loaded_session)
-                except TrackCompareError as exc:
-                    st.error(str(exc))
+                driver_a, driver_b = selected_drivers
+                lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
+                lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
+                if not lap_options_a or not lap_options_b:
+                    st.info("No lap numbers are available for one or both selected drivers.")
                 else:
-                    for warning in track_diagnostics.warnings:
-                        st.warning(warning)
-                    if corner_markers is None:
-                        st.warning("Track corner numbering is unavailable for this session.")
-                    figure = build_track_compare_figure(track_compare_rows)
-                    st.plotly_chart(figure, use_container_width=True)
+                    selected_lap_a = st.selectbox(
+                        f"Lap for {driver_a}",
+                        options=lap_options_a,
+                        index=_default_lap_index(lap_options_a),
+                        key="track_lap_a",
+                    )
+                    selected_lap_b = st.selectbox(
+                        f"Lap for {driver_b}",
+                        options=lap_options_b,
+                        index=_default_lap_index(lap_options_b),
+                        key="track_lap_b",
+                    )
+                    st.caption(
+                        "Lap 1 is usually not a good comparison lap because the race start, launch phase, "
+                        "opening-corner traffic, and position changes distort the pace profile. Lap 2 is "
+                        "typically a cleaner baseline when available."
+                    )
+                    try:
+                        lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
+                        lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
+                        track_compare_rows, track_diagnostics = build_track_compare_rows(lap_a, lap_b)
+                        corner_markers, _corner_warnings = build_corner_markers(loaded_session)
+                    except TrackCompareError as exc:
+                        st.error(str(exc))
+                    else:
+                        for warning in track_diagnostics.warnings:
+                            st.warning(warning)
+                        if corner_markers is None:
+                            st.warning("Track corner numbering is unavailable for this session.")
+                        figure = build_track_compare_figure(track_compare_rows)
+                        st.plotly_chart(figure, use_container_width=True)
 
-    with tabs[5]:
-        st.subheader("Telemetry comparison")
-        loaded_session = st.session_state.get("loaded_session")
-        canonical_laps = st.session_state.get("canonical_laps")
-        selected_drivers = st.session_state.get("selected_drivers")
-        if loaded_session is None or canonical_laps is None or selected_drivers is None:
-            st.info("Build canonical laps to prepare telemetry comparison.")
-        else:
-            driver_a, driver_b = selected_drivers
-            lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
-            lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
-            if not lap_options_a or not lap_options_b:
-                st.info("No lap numbers are available for one or both selected drivers.")
+        with tabs[5]:
+            st.subheader("Telemetry comparison")
+            loaded_session = st.session_state.get("loaded_session")
+            canonical_laps = st.session_state.get("canonical_laps")
+            selected_drivers = st.session_state.get("selected_drivers")
+            if loaded_session is None or canonical_laps is None or selected_drivers is None:
+                st.info("Build canonical laps to prepare telemetry comparison.")
             else:
-                selected_lap_a = st.selectbox(f"Telemetry lap for {driver_a}", options=lap_options_a, key="telemetry_lap_a")
-                selected_lap_b = st.selectbox(f"Telemetry lap for {driver_b}", options=lap_options_b, key="telemetry_lap_b")
-                try:
-                    lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
-                    lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
-                    telemetry_compare_rows, telemetry_diagnostics = build_telemetry_compare_rows(lap_a, lap_b)
-                    corner_markers, corner_warnings = build_corner_markers(loaded_session)
-                except TrackCompareError as exc:
-                    st.error(str(exc))
+                driver_a, driver_b = selected_drivers
+                lap_options_a = _available_driver_lap_numbers(canonical_laps, driver_a)
+                lap_options_b = _available_driver_lap_numbers(canonical_laps, driver_b)
+                if not lap_options_a or not lap_options_b:
+                    st.info("No lap numbers are available for one or both selected drivers.")
                 else:
-                    st.session_state["telemetry_compare"] = telemetry_compare_rows
-                    for warning in telemetry_diagnostics.warnings:
-                        st.warning(warning)
-                    for warning in corner_warnings:
-                        st.warning(warning)
-                    figure = build_telemetry_compare_figure(
-                        telemetry_compare_rows,
-                        corner_markers=corner_markers,
-                    )
-                    st.plotly_chart(figure, use_container_width=True)
-                    st.dataframe(telemetry_compare_rows, use_container_width=True)
+                    selected_lap_a = st.selectbox(f"Telemetry lap for {driver_a}", options=lap_options_a, key="telemetry_lap_a")
+                    selected_lap_b = st.selectbox(f"Telemetry lap for {driver_b}", options=lap_options_b, key="telemetry_lap_b")
+                    try:
+                        lap_a = _select_session_lap(loaded_session, driver_a, int(selected_lap_a))
+                        lap_b = _select_session_lap(loaded_session, driver_b, int(selected_lap_b))
+                        telemetry_compare_rows, telemetry_diagnostics = build_telemetry_compare_rows(lap_a, lap_b)
+                        corner_markers, corner_warnings = build_corner_markers(loaded_session)
+                    except TrackCompareError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["telemetry_compare"] = telemetry_compare_rows
+                        for warning in telemetry_diagnostics.warnings:
+                            st.warning(warning)
+                        for warning in corner_warnings:
+                            st.warning(warning)
+                        figure = build_telemetry_compare_figure(
+                            telemetry_compare_rows,
+                            corner_markers=corner_markers,
+                        )
+                        st.plotly_chart(figure, use_container_width=True)
+                        st.dataframe(telemetry_compare_rows, use_container_width=True)
 
-    with tabs[6]:
-        st.subheader("Methods")
-        selected_drivers = st.session_state.get("selected_drivers")
-        if selected_drivers is None:
-            st.info("Build canonical laps to populate methods and exports.")
-        else:
-            exclude_sc_vsc = bool(st.session_state.get("exclude_sc_vsc", False))
-            polynomial_degree = int(st.session_state.get("polynomial_degree", 2))
-            methods_table = build_methods_table(
-                exclude_sc_vsc=exclude_sc_vsc,
-                polynomial_degree=polynomial_degree,
-            )
-            st.session_state["methods_table"] = methods_table
-            st.dataframe(methods_table, use_container_width=True)
+        with tabs[6]:
+            st.subheader("Methods")
+            selected_drivers = st.session_state.get("selected_drivers")
+            if selected_drivers is None:
+                st.info("Build canonical laps to populate methods and exports.")
+            else:
+                exclude_sc_vsc = bool(st.session_state.get("exclude_sc_vsc", False))
+                polynomial_degree = int(st.session_state.get("polynomial_degree", 2))
+                methods_table = build_methods_table(
+                    exclude_sc_vsc=exclude_sc_vsc,
+                    polynomial_degree=polynomial_degree,
+                )
+                st.session_state["methods_table"] = methods_table
+                st.dataframe(methods_table, use_container_width=True)
 
-            if st.button("Export CSV + PDF", type="primary"):
-                loaded_session = st.session_state.get("loaded_session")
-                canonical_laps = st.session_state.get("canonical_laps")
-                laps_filtered = st.session_state.get("laps_filtered")
-                delta_laps = st.session_state.get("delta_laps")
-                if loaded_session is None or canonical_laps is None or laps_filtered is None or delta_laps is None:
-                    st.error("Build the analysis tables before exporting.")
-                else:
-                    driver_a, driver_b = selected_drivers
-                    metadata = extract_session_metadata(loaded_session)
-                    warnings = list(st.session_state.get("filter_warnings", []))
-                    export_result = export_analysis_artifacts(
-                        season=metadata.season,
-                        round_number=metadata.round_number,
-                        session_type=metadata.session_name,
-                        driver_a=driver_a,
-                        driver_b=driver_b,
-                        laps=canonical_laps,
-                        laps_filtered=laps_filtered,
-                        delta_laps=delta_laps,
-                        telemetry_compare=st.session_state.get("telemetry_compare"),
-                        methods=methods_table,
-                        warnings=warnings,
-                        polynomial_degree=polynomial_degree,
-                        exclude_sc_vsc=exclude_sc_vsc,
-                        telemetry_lap_a=st.session_state.get("telemetry_lap_a"),
-                        telemetry_lap_b=st.session_state.get("telemetry_lap_b"),
-                        lap_trend_rows=st.session_state.get("lap_trend_plot_rows"),
-                    )
-                    st.session_state["exports_table"] = export_result.exports_row
-                    st.session_state["run_log_path"] = str(export_result.run_log_path)
-                    st.success(f"Exports written to {export_result.csv_path} and {export_result.pdf_path}")
-                    st.dataframe(export_result.exports_row, use_container_width=True)
+                if st.button("Export CSV + PDF", type="primary"):
+                    loaded_session = st.session_state.get("loaded_session")
+                    canonical_laps = st.session_state.get("canonical_laps")
+                    laps_filtered = st.session_state.get("laps_filtered")
+                    delta_laps = st.session_state.get("delta_laps")
+                    if loaded_session is None or canonical_laps is None or laps_filtered is None or delta_laps is None:
+                        st.error("Build the analysis tables before exporting.")
+                    else:
+                        driver_a, driver_b = selected_drivers
+                        metadata = extract_session_metadata(loaded_session)
+                        warnings = list(st.session_state.get("filter_warnings", []))
+                        export_result = export_analysis_artifacts(
+                            season=metadata.season,
+                            round_number=metadata.round_number,
+                            session_type=metadata.session_name,
+                            driver_a=driver_a,
+                            driver_b=driver_b,
+                            laps=canonical_laps,
+                            laps_filtered=laps_filtered,
+                            delta_laps=delta_laps,
+                            telemetry_compare=st.session_state.get("telemetry_compare"),
+                            methods=methods_table,
+                            warnings=warnings,
+                            polynomial_degree=polynomial_degree,
+                            exclude_sc_vsc=exclude_sc_vsc,
+                            telemetry_lap_a=st.session_state.get("telemetry_lap_a"),
+                            telemetry_lap_b=st.session_state.get("telemetry_lap_b"),
+                            lap_trend_rows=st.session_state.get("lap_trend_plot_rows"),
+                        )
+                        st.session_state["exports_table"] = export_result.exports_row
+                        st.session_state["run_log_path"] = str(export_result.run_log_path)
+                        st.success(f"Exports written to {export_result.csv_path} and {export_result.pdf_path}")
+                        st.dataframe(export_result.exports_row, use_container_width=True)
 
-    with tabs[7]:
-        st.subheader("Debug panels")
-        for warning in st.session_state.get("filter_warnings", []):
-            st.warning(warning)
-        run_log_path = st.session_state.get("run_log_path")
-        if run_log_path:
-            st.caption(f"Run log: {run_log_path}")
-        _render_debug_tables()
+        with tabs[7]:
+            st.subheader("Debug panels")
+            for warning in st.session_state.get("filter_warnings", []):
+                st.warning(warning)
+            run_log_path = st.session_state.get("run_log_path")
+            if run_log_path:
+                st.caption(f"Run log: {run_log_path}")
+            _render_debug_tables()
+
+
+def _render_championship_section() -> None:
+    st.subheader("Championship Analysis")
+
+    seasons = available_seasons()
+    selected_season = st.selectbox(
+        "Season",
+        options=seasons,
+        index=len(seasons) - 1,
+        key="champ_season",
+    )
+    season_int = int(selected_season)
+    cache_key = f"championship_data_{season_int}"
+
+    col_btn, col_status = st.columns([0.25, 0.75])
+    with col_btn:
+        load_clicked = st.button("Load season results", type="primary", key="champ_load")
+    with col_status:
+        existing: list[RoundResult] = st.session_state.get(cache_key, [])
+        if existing:
+            st.caption(f"{len(existing)} rounds loaded — click again to refresh")
+
+    if load_clicked:
+        with st.spinner(f"Loading {season_int} race results (this may take a minute)…"):
+            try:
+                results = load_season_results(season_int)
+                st.session_state[cache_key] = results
+                st.success(f"Loaded {len(results)} completed rounds.")
+            except ChampionshipLoadError as exc:
+                st.error(str(exc))
+                return
+
+    season_results: list[RoundResult] = st.session_state.get(cache_key, [])
+    if not season_results:
+        st.info("Select a season and click 'Load season results' to begin.")
+        return
+
+    drivers = available_drivers(season_results)
+    teams = available_teams(season_results)
+
+    st.markdown("---")
+    st.markdown("### Driver Championship Points")
+    selected_drivers_pts = st.multiselect(
+        "Select drivers",
+        options=drivers,
+        default=drivers[:5] if len(drivers) >= 5 else drivers,
+        key="champ_drivers_pts",
+    )
+    if selected_drivers_pts:
+        driver_pts_df = build_driver_cumulative_points(season_results, selected_drivers_pts)
+        st.plotly_chart(build_driver_points_figure(driver_pts_df), use_container_width=True)
+    else:
+        st.info("Select at least one driver.")
+
+    st.markdown("---")
+    st.markdown("### Constructor Championship Points")
+    selected_teams_pts = st.multiselect(
+        "Select teams",
+        options=teams,
+        default=teams[:5] if len(teams) >= 5 else teams,
+        key="champ_teams_pts",
+    )
+    if selected_teams_pts:
+        team_pts_df = build_team_cumulative_points(season_results, selected_teams_pts)
+        st.plotly_chart(build_team_points_figure(team_pts_df), use_container_width=True)
+    else:
+        st.info("Select at least one team.")
+
+    st.markdown("---")
+    st.markdown("### Driver Race Finish Gap")
+    st.caption(
+        "Gap in seconds relative to the fastest classified selected driver per round. "
+        "DNFs and unclassified finishes are omitted."
+    )
+    selected_drivers_gap = st.multiselect(
+        "Select 2 or more drivers",
+        options=drivers,
+        default=drivers[:3] if len(drivers) >= 3 else drivers,
+        key="champ_drivers_gap",
+    )
+    if len(selected_drivers_gap) >= 2:
+        gap_df = build_driver_gap_table(season_results, selected_drivers_gap)
+        st.plotly_chart(build_driver_gap_figure(gap_df), use_container_width=True)
+    else:
+        st.info("Select at least 2 drivers to see the gap chart.")
 
 
 if __name__ == "__main__":
