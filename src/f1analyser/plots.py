@@ -390,28 +390,56 @@ def build_team_points_figure(df: pd.DataFrame) -> go.Figure:
 
 
 def build_driver_gap_figure(df: pd.DataFrame) -> go.Figure:
-    """Race finish gap in seconds relative to the fastest classified selected driver per round."""
+    """Race finish gap in seconds relative to the fastest classified selected driver per round.
+
+    DNF / unclassified entries are shown as small gray bars labelled 'DNF'.
+    """
     figure = go.Figure()
     drivers = list(df["Driver"].unique())
+
+    # Small fixed-height sentinel for DNF bars so the label is visible above the axis
+    DNF_BAR_HEIGHT = 1.0
+
     for i, driver in enumerate(drivers):
         ddf = df[df["Driver"] == driver].sort_values("RoundNumber")
-        color = CHAMPIONSHIP_PALETTE[i % len(CHAMPIONSHIP_PALETTE)]
+        base_color = CHAMPIONSHIP_PALETTE[i % len(CHAMPIONSHIP_PALETTE)]
+
+        is_dnf: pd.Series = ddf["IsDNF"].astype(bool) if "IsDNF" in ddf.columns else ddf["GapSeconds"].isna()
+        normal = ddf[~is_dnf]
+        dnf = ddf[is_dnf]
+
         figure.add_trace(
-            go.Scatter(
-                x=ddf["EventName"],
-                y=ddf["GapSeconds"],
-                mode="lines+markers",
+            go.Bar(
+                x=normal["EventName"],
+                y=normal["GapSeconds"],
                 name=driver,
-                line={"color": color, "width": 2},
-                marker={"size": 7},
-                connectgaps=False,
+                marker_color=base_color,
+                legendgroup=driver,
+                showlegend=True,
             )
         )
+
+        if not dnf.empty:
+            figure.add_trace(
+                go.Bar(
+                    x=dnf["EventName"],
+                    y=[DNF_BAR_HEIGHT] * len(dnf),
+                    name=driver,
+                    marker_color="#cccccc",
+                    text=["DNF"] * len(dnf),
+                    textposition="outside",
+                    textfont={"size": 10, "color": "#555555"},
+                    legendgroup=driver,
+                    showlegend=False,
+                )
+            )
+
     figure.update_layout(
+        barmode="group",
         title="Race Finish Gap — seconds vs. fastest selected driver",
         xaxis_title="Round",
         yaxis_title="Gap (s)",
-        margin={"l": 40, "r": 24, "t": 64, "b": 80},
+        margin={"l": 40, "r": 24, "t": 80, "b": 80},
         xaxis={"tickangle": -35},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
     )

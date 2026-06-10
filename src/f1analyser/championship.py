@@ -171,10 +171,11 @@ def build_driver_gap_table(
                 "EventName": r.event_name,
                 "Driver": driver,
                 "GapToWinner": gap_s,
+                "IsDNF": gap_s is None,
             })
 
     if not rows:
-        return pd.DataFrame(columns=["RoundNumber", "EventName", "Driver", "GapSeconds"])
+        return pd.DataFrame(columns=["RoundNumber", "EventName", "Driver", "GapSeconds", "IsDNF"])
 
     out = pd.DataFrame(rows).sort_values("RoundNumber")
     min_gap = out.groupby("RoundNumber")["GapToWinner"].transform("min")
